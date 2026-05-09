@@ -1,0 +1,103 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}审批处理{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-clipboard-check me-2" style="color:#0075de;"></i>审批入库申请</h4>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">申请单号</label>
+                        <p class="mb-0 fw-bold">{{ application.application_no }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">申请时间</label>
+                        <p class="mb-0">{{ application.created_at|date:"Y-m-d H:i" }}</p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">申请人</label>
+                        <p class="mb-0">{{ application.applicant.username }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">部门</label>
+                        <p class="mb-0">{{ application.department }}</p>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">申请原因</label>
+                    <p class="mb-0">{{ application.reason|default:"-" }}</p>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="form-label text-muted">入库物品明细</label>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>物品编码</th>
+                                    <th>物品名称</th>
+                                    <th>申请数量</th>
+                                    <th>单价</th>
+                                    <th>小计</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in application.items.all %}
+                                <tr>
+                                    <td>{{ item.supply.code }}</td>
+                                    <td>{{ item.supply.name }}</td>
+                                    <td>{{ item.quantity }} {{ item.supply.unit }}</td>
+                                    <td class="text-end">¥{{ item.unit_price|floatformat:2 }}</td>
+                                    <td class="text-end fw-bold">¥{{ item.subtotal|floatformat:2 }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">暂无明细</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-active fw-bold">
+                                    <td colspan="4" class="text-end">合计金额：</td>
+                                    <td class="text-end">¥{{ application.get_total_amount|floatformat:2 }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <hr>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="form-label">审批意见</label>
+                        <textarea name="approval_comment" class="form-control" rows="3" placeholder="可选，填写审批意见"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'approval_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>返回
+                        </a>
+                        <div class="d-flex gap-2">
+                            <button type="submit" name="action" value="reject" class="btn btn-danger">
+                                <i class="fas fa-times me-1"></i> 拒绝
+                            </button>
+                            <button type="submit" name="action" value="approve" class="btn btn-success">
+                                <i class="fas fa-check me-1"></i> 批准
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
