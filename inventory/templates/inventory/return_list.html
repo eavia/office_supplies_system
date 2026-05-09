@@ -1,0 +1,67 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}归还申请{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0" style="font-weight:600;">归还申请记录</h4>
+    <a href="{% url 'return_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i> 新增归还申请
+    </a>
+</div>
+
+<div class="table-container">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>归还单号</th>
+                    <th>物品</th>
+                    <th>数量</th>
+                    <th>归还人</th>
+                    <th>部门</th>
+                    <th>归还日期</th>
+                    <th>操作员</th>
+                    <th>申请时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ret in page_obj %}
+                <tr>
+                    <td><strong>{{ ret.return_no }}</strong></td>
+                    <td>{{ ret.supply.name }}</td>
+                    <td>{{ ret.quantity }} {{ ret.supply.unit }}</td>
+                    <td>{{ ret.returner }}</td>
+                    <td>{{ ret.department }}</td>
+                    <td>{{ ret.return_date|date:"Y-m-d" }}</td>
+                    <td>{{ ret.operator.username }}</td>
+                    <td>{{ ret.created_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">
+                        <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                        暂无数据
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if page_obj.has_other_pages %}
+    <nav class="p-3">
+        <ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1">首页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            {% endif %}
+            <li class="page-item active"><span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">末页</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
