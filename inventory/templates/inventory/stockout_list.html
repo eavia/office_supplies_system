@@ -1,0 +1,105 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}出库记录查询{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{% url 'stockout_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> 出库登记
+        </a>
+    </div>
+    <form method="get" class="row g-2">
+        <div class="col-auto">
+            <input type="text" name="q" class="form-control" placeholder="搜索单号/领用人" value="{{ query }}">
+        </div>
+        <div class="col-auto">
+            <select name="out_type" class="form-select">
+                <option value="">全部类型</option>
+                <option value="领用" {% if out_type_filter == '领用' %}selected{% endif %}>领用</option>
+                <option value="归还" {% if out_type_filter == '归还' %}selected{% endif %}>归还</option>
+                <option value="报废" {% if out_type_filter == '报废' %}selected{% endif %}>报废</option>
+                <option value="调拨" {% if out_type_filter == '调拨' %}selected{% endif %}>调拨</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-secondary">
+                <i class="fas fa-filter me-1"></i>筛选
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>出库单号</th>
+                    <th>出库物品</th>
+                    <th>领用人</th>
+                    <th>部门</th>
+                    <th>类型</th>
+                    <th>操作员</th>
+                    <th>出库时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in page_obj %}
+                <tr>
+                    <td><strong>{{ record.record_no }}</strong></td>
+                    <td>
+                        {% for item in record.items.all %}
+                        <span class="badge bg-light text-dark me-1 mb-1">{{ item.supply.name }}{% if item.supply.specification %}({{ item.supply.specification }}){% endif %} × {{ item.quantity }}{{ item.supply.unit }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ record.recipient }}</td>
+                    <td>{{ record.department }}</td>
+                    <td>
+                        {% if record.out_type == '领用' %}
+                        <span class="badge bg-primary">领用</span>
+                        {% elif record.out_type == '归还' %}
+                        <span class="badge bg-success">归还</span>
+                        {% elif record.out_type == '报废' %}
+                        <span class="badge bg-danger">报废</span>
+                        {% else %}
+                        <span class="badge bg-info">调拨</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ record.operator.username }}</td>
+                    <td>{{ record.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        <a href="{% url 'stockout_detail' record.pk %}" class="btn btn-sm btn-outline-info" title="查看明细">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">
+                        <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                        暂无数据
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if page_obj.has_other_pages %}
+    <nav class="p-3">
+        <ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1">首页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            {% endif %}
+            <li class="page-item active"><span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">末页</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
