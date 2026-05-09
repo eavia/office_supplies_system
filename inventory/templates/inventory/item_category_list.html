@@ -1,0 +1,181 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}物品分类管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tree-container {
+        background: white;
+        border-radius: var(--radius-lg, 10px);
+        box-shadow: var(--shadow-card, 0 1px 2px rgba(0,0,0,0.04));
+        overflow: hidden;
+    }
+    .tree-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border-standard, rgba(0,0,0,0.1));
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .tree-body {
+        padding: 24px;
+    }
+    .tree-node {
+        position: relative;
+        padding-left: 24px;
+    }
+    .tree-node-content {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-radius: var(--radius-lg, 10px);
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .tree-node-content:hover {
+        background: var(--bg-secondary, #f6f5f4);
+    }
+    .tree-toggle {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--border-standard, rgba(0,0,0,0.1));
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        margin-right: 8px;
+        font-size: 0.7rem;
+        color: var(--text-secondary, #615d59);
+        transition: all 0.2s ease;
+    }
+    .tree-toggle:hover {
+        background: #0075de;
+        border-color: #0075de;
+        color: white;
+    }
+    .tree-toggle.empty {
+        border-color: transparent;
+        background: transparent;
+        cursor: default;
+    }
+    .tree-toggle.empty:hover {
+        background: transparent;
+        color: var(--text-secondary, #615d59);
+    }
+    .tree-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 10px;
+        font-size: 0.9rem;
+    }
+    .tree-icon.root {
+        background: rgba(0, 117, 222, 0.1);
+        color: #0075de;
+    }
+    .tree-icon.child {
+        background: rgba(72, 187, 120, 0.1);
+        color: #48bb78;
+    }
+    .tree-info {
+        flex: 1;
+    }
+    .tree-name {
+        font-weight: 600;
+        color: var(--text-primary, rgba(0,0,0,0.95));
+        font-size: 0.95rem;
+    }
+    .tree-meta {
+        color: #615d59;
+        font-size: 0.8rem;
+        margin-top: 2px;
+    }
+    .tree-actions {
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+    .tree-node-content:hover .tree-actions {
+        opacity: 1;
+    }
+    .tree-children {
+        margin-left: 16px;
+        border-left: 2px solid rgba(0,0,0,0.1);
+        padding-left: 8px;
+    }
+    .tree-children.collapsed {
+        display: none;
+    }
+    .badge-inactive {
+        background: rgba(0,0,0,0.06);
+        color: #615d59;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin-left: 8px;
+    }
+    .empty-tree {
+        text-align: center;
+        padding: 60px 20px;
+        color: #615d59;
+    }
+    .empty-tree i {
+        font-size: 3rem;
+        margin-bottom: 16px;
+        color: rgba(0,0,0,0.15);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tree-container">
+            <div class="tree-header">
+                <div>
+                    <h4 class="mb-0" style="font-weight:600;"><i class="fas fa-sitemap me-2" style="color:#0075de;"></i>物品分类</h4>
+            <small class="text-muted">支持多级树型结构，点击左侧箭头展开/收起子分类</small>
+        </div>
+        <a href="{% url 'item_category_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> 新增根分类
+        </a>
+    </div>
+    <div class="tree-body">
+        {% if categories %}
+            {% for category in categories %}
+                {% include 'inventory/item_category_tree_node.html' with node=category level=0 %}
+            {% endfor %}
+        {% else %}
+            <div class="empty-tree">
+                <i class="fas fa-folder-tree"></i>
+                <p>暂无分类数据</p>
+                <a href="{% url 'item_category_create' %}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i> 创建第一个分类
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 树节点展开/收起
+        document.querySelectorAll('.tree-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var children = this.closest('.tree-node').querySelector('.tree-children');
+                if (children) {
+                    children.classList.toggle('collapsed');
+                    this.querySelector('i').classList.toggle('fa-chevron-right');
+                    this.querySelector('i').classList.toggle('fa-chevron-down');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
