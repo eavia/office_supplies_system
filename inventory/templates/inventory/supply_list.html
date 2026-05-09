@@ -1,0 +1,114 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}库存一览{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="btn-group gap-2">
+        <a href="{% url 'supply_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> 物品登记
+        </a>
+        <a href="{% url 'supply_import' %}" class="btn btn-success">
+            <i class="fas fa-upload me-1"></i> 导入
+        </a>
+        <a href="{% url 'supply_export' %}" class="btn btn-info">
+            <i class="fas fa-download me-1"></i> 导出
+        </a>
+    </div>
+    <form method="get" class="row g-2">
+        <div class="col-auto">
+            <input type="text" name="q" class="form-control" placeholder="搜索编码/名称" value="{{ query }}">
+        </div>
+        <div class="col-auto">
+            <select name="category" class="form-select">
+                <option value="">全部类别</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if category_filter == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.get_full_path }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-secondary">
+                <i class="fas fa-filter me-1"></i>筛选
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>物品编码</th>
+                    <th>物品名称</th>
+                    <th>类别</th>
+                    <th>规格</th>
+                    <th>单位</th>
+                    <th>库存数量</th>
+                    <th>安全库存</th>
+                    <th>状态</th>
+                    <th>存放位置</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for supply in page_obj %}
+                <tr>
+                    <td><strong>{{ supply.code }}</strong></td>
+                    <td>{{ supply.name }}</td>
+                    <td>{{ supply.item_category.name|default:"未分类" }}</td>
+                    <td>{{ supply.specification|default:"-" }}</td>
+                    <td>{{ supply.unit }}</td>
+                    <td><strong>{{ supply.quantity }}</strong></td>
+                    <td>{{ supply.safety_stock }}</td>
+                    <td>
+                        {% if supply.status == '正常' %}
+                        <span class="badge bg-success">正常</span>
+                        {% elif supply.status == '低库存' %}
+                        <span class="badge bg-warning">低库存</span>
+                        {% else %}
+                        <span class="badge bg-secondary">停用</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ supply.location|default:"-" }}</td>
+                    <td>
+                        <a href="{% url 'supply_update' supply.pk %}" class="btn btn-sm btn-outline-primary" title="变更">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <a href="{% url 'supply_add_stock' supply.pk %}" class="btn btn-sm btn-outline-success" title="追加">
+                            <i class="fas fa-plus"></i>
+                        </a>
+                        <a href="{% url 'supply_delete' supply.pk %}" class="btn btn-sm btn-outline-danger" title="删除">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-5">
+                        <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                        暂无数据
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if page_obj.has_other_pages %}
+    <nav class="p-3">
+        <ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1">首页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            {% endif %}
+            <li class="page-item active"><span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">末页</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
