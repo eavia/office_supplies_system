@@ -1,0 +1,160 @@
+{% extends 'inventory/base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-edit me-2" style="color:#0075de;"></i>{{ title }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-3 d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold mb-0">物品编码（主数据）</span>
+                    {% if supply and supply.code %}
+                    <span class="badge bg-primary fs-6">{{ supply.code }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary fs-6">保存后自动生成</span>
+                    {% endif %}
+                </div>
+                <form method="post" id="supplyForm">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        {% for field in form %}
+                        <div class="col-md-6">
+                            <label class="form-label">{{ field.label }}</label>
+                            {% if field.name == 'name' %}
+                            <div class="position-relative">
+                                <input type="text" name="{{ field.html_name }}" id="id_name"
+                                    class="form-control" autocomplete="off"
+                                    placeholder="输入首字母/编码快速查找物品"
+                                    value="{{ field.value|default:'' }}">
+
+                                <div id="nameSuggestions" class="list-group position-absolute w-100 shadow-sm"
+                                    style="z-index:10;max-height:220px;overflow-y:auto;display:none;"></div>
+                            </div>
+                            <div class="form-text text-muted" id="nameSearchHint">支持首字母/编码检索；可直接新建名称，也可回车/点击快速填入匹配项</div>
+                            {% else %}
+                            {{ field }}
+                            {% endif %}
+                            {% if field.errors %}
+                            <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'supply_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-1"></i>取消
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i> {{ action }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const nameInput = document.getElementById('id_name');
+    const categorySelect = document.getElementById('id_item_category');
+    const suggestions = document.getElementById('nameSuggestions');
+    const hint = document.getElementById('nameSearchHint');
+    if (!nameInput || !suggestions || !hint) return;
+
+    let debounceTimer = null;
+    let latestResults = [];
+
+    function setHint(text, tone) {
+        hint.textContent = text;
+        hint.className = `form-text ${tone}`;
+    }
+
+    function applySelection(item) {
+        nameInput.value = item.name;
+
+        if (categorySelect && item.item_category_id) {
+            const categoryId = String(item.item_category_id);
+            const hasOption = Array.from(categorySelect.options).some(opt => opt.value === categoryId);
+            if (hasOption) {
+                categorySelect.value = categoryId;
+                categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        suggestions.style.display = 'none';
+        setHint('已录入：' + item.code + ' - ' + item.name, 'text-success');
+    }
+
+    function renderSuggestions(results) {
+        latestResults = results || [];
+        suggestions.innerHTML = '';
+
+        if (latestResults.length === 0) {
+            suggestions.style.display = 'none';
+            setHint('未匹配到有效物品，请继续输入首字母/编码', 'text-danger');
+            return;
+        }
+
+        latestResults.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+            btn.innerHTML = '<span>' + item.name + '</span><span class="badge bg-light text-dark">' + item.code + '</span>';
+            btn.addEventListener('click', () => applySelection(item));
+            suggestions.appendChild(btn);
+        });
+
+        suggestions.style.display = 'block';
+        setHint('已匹配 ' + latestResults.length + ' 条，点击或回车可直接录入第一条', 'text-muted');
+    }
+
+    function querySuggestions(q) {
+        fetch('{% url "supply_name_search" %}?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => renderSuggestions(data.results || []))
+            .catch(() => {
+                latestResults = [];
+                suggestions.style.display = 'none';
+                setHint('查询失败，请重试', 'text-danger');
+            });
+    }
+
+    nameInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        const q = this.value.trim();
+
+        if (!q) {
+            latestResults = [];
+            suggestions.style.display = 'none';
+            setHint('支持首字母/编码检索；可直接新建名称，也可回车/点击快速填入匹配项', 'text-muted');
+            return;
+        }
+
+        debounceTimer = setTimeout(() => querySuggestions(q), 200);
+    });
+
+    nameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (latestResults.length > 0) {
+                applySelection(latestResults[0]);
+            } else {
+                setHint('没有可录入的匹配项，请输入首字母/编码继续检索', 'text-danger');
+            }
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!suggestions.contains(e.target) && e.target !== nameInput) {
+            suggestions.style.display = 'none';
+        }
+    });
+})();
+</script>
+{% endblock %}
