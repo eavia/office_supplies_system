@@ -1,0 +1,336 @@
+{% extends 'inventory/base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>{{ title }}</h4>
+            </div>
+            <div class="card-body">
+                <form method="post" id="stockoutForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="items_json" id="id_items_json">
+
+                    <!-- 出库单基本信息 -->
+                    <div class="row g-3">
+                        {% for field in form %}
+                        <div class="col-md-6">
+                            <label class="form-label">{{ field.label }}</label>
+                            {% if field.name == 'department' %}
+                            <div class="position-relative">
+                                <input type="text" id="deptQuickSearch" class="form-control" autocomplete="off"
+                                    placeholder="输入首字母/编码快速查找部门"
+                                    value="{% with selected_value=field.value|stringformat:'s' %}{% for val, label in field.field.choices %}{% if val|stringformat:'s' == selected_value %}{{ label }}{% endif %}{% endfor %}{% endwith %}">
+                                <input type="hidden" name="{{ field.html_name }}" id="id_department" value="{{ field.value|default:'' }}">
+                                <div id="deptSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:10;max-height:220px;overflow-y:auto;display:none;"></div>
+                            </div>
+                            <div class="form-text text-muted" id="deptSearchHint">支持首字母/编码检索，回车直接录入第一条匹配项</div>
+                            {% else %}
+                            {{ field }}
+                            {% endif %}
+                            {% if field.errors %}
+                            <div class="text-danger small mt-1">{{ field.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- 物品明细 -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0"><i class="fas fa-list me-2"></i>出库物品明细</h5>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="addItemBtn">
+                            <i class="fas fa-plus me-1"></i>添加物品
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle" style="table-layout:auto" id="itemsTable">
+                            <colgroup>
+                                <col style="width:40px">
+                                <col>
+                                <col>
+                                <col style="width:100px">
+                                <col style="width:100px">
+                                <col style="width:40px">
+                            </colgroup>
+                            <thead class="table-light">
+                                <tr class="text-nowrap">
+                                    <th>#</th>
+                                    <th>物品</th>
+                                    <th>规格型号</th>
+                                    <th>出库数量</th>
+                                    <th>当前库存</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="form-text text-muted" id="itemsHint">点击「添加物品」开始，每行通过首字母/编码查找物品后填写出库数量</div>
+
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'stockout_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-1"></i>取消
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-sign-out-alt me-1"></i> 确认出库
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const deptPinyinMap = {{ form.dept_pinyin_json|safe }};
+    const deptActiveMap = {{ form.dept_active_json|safe }};
+
+    // ========== 部门快速查找 ==========
+    const deptChoices = [
+        {% for val, label in form.department.field.choices %}
+        {% if val %}{
+            id: '{{ val|escapejs }}',
+            text: '{{ label|escapejs }}',
+            pinyin: deptPinyinMap['{{ val|escapejs }}'] || '',
+            isActive: !!deptActiveMap['{{ val|escapejs }}']
+        },{% endif %}
+        {% endfor %}
+    ].filter(item => item.isActive);
+
+    function initDeptSearch() {
+        const searchInput = document.getElementById('deptQuickSearch');
+        const hiddenInput = document.getElementById('id_department');
+        const suggestions = document.getElementById('deptSuggestions');
+        const hint = document.getElementById('deptSearchHint');
+        if (!searchInput || !hiddenInput || !suggestions) return;
+
+        const match = (text, keyword, pinyin) => {
+            if (!keyword) return true;
+            const uk = keyword.toUpperCase();
+            if (text.toUpperCase().includes(uk)) return true;
+            if (pinyin && pinyin.toUpperCase().includes(uk)) return true;
+            return text.toUpperCase().split(/[^A-Z0-9\u4e00-\u9fa5]+/).filter(Boolean).some(t => t.startsWith(uk));
+        };
+        const findMatches = (kw) => deptChoices.filter(item => match(item.text, kw, item.pinyin)).slice(0, 20);
+        const apply = (item) => {
+            searchInput.value = item.text;
+            hiddenInput.value = item.id;
+            suggestions.style.display = 'none';
+            hint.textContent = '已录入：' + item.text;
+            hint.className = 'form-text text-success';
+        };
+
+        searchInput.addEventListener('input', () => { hiddenInput.value = ''; const kw = searchInput.value.trim(); if (!kw) { suggestions.style.display = 'none'; hint.textContent = '支持首字母/编码检索，回车直接录入第一条匹配项'; hint.className = 'form-text text-muted'; return; } const m = findMatches(kw); suggestions.innerHTML = ''; if (!m.length) { suggestions.style.display = 'none'; hint.textContent = '未匹配到记录'; hint.className = 'form-text text-danger'; return; } m.forEach(item => { const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'list-group-item list-group-item-action'; btn.textContent = item.text; btn.addEventListener('click', () => apply(item)); suggestions.appendChild(btn); }); suggestions.style.display = 'block'; hint.textContent = '已匹配 ' + m.length + ' 条'; hint.className = 'form-text text-muted'; });
+        searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const m = findMatches(searchInput.value.trim()); if (m.length) apply(m[0]); } });
+        document.addEventListener('click', (e) => { if (!suggestions.contains(e.target) && e.target !== searchInput) suggestions.style.display = 'none'; });
+
+        return { hiddenInput, hint };
+    }
+
+    const deptRefs = initDeptSearch();
+
+    // ========== 物品明细动态表 ==========
+    const itemsBody = document.getElementById('itemsBody');
+    const itemsHint = document.getElementById('itemsHint');
+    let rowCounter = 0;
+
+    function findExistingSupplyId(supplyId, excludeRowIdx) {
+        // 检查 supplyId 是否已在其他行中存在，返回行号或 null
+        let rowNum = 0;
+        for (const tr of itemsBody.querySelectorAll('tr')) {
+            rowNum++;
+            const rowIdx = parseInt(tr.dataset.rowIdx);
+            if (rowIdx === excludeRowIdx) continue;
+            const existingId = tr.querySelector('.itemSupplyId').value;
+            if (existingId === String(supplyId)) return rowNum;
+        }
+        return null;
+    }
+
+    function addRow(supplyId, supplyName, supplySpec, qty, stockQty, stockUnit, isError) {
+        rowCounter++;
+        const idx = rowCounter;
+        const stockText = (stockQty !== undefined && stockQty !== null && stockQty !== '') ? stockQty + ' ' + (stockUnit || '') : '-';
+        const tr = document.createElement('tr');
+        tr.dataset.rowIdx = idx;
+        if (isError) {
+            tr.className = 'table-danger';
+        }
+        tr.innerHTML = `
+            <td class="text-center text-muted">${idx}</td>
+            <td>
+                <div class="position-relative">
+                    <input type="text" class="form-control form-control-sm itemSearch ${isError ? 'is-invalid' : ''}" autocomplete="off"
+                        placeholder="输入首字母/编码查找物品" data-row="${idx}" value="${supplyName || ''}">
+                    <input type="hidden" class="itemSupplyId" data-row="${idx}" value="${supplyId || ''}">
+                    <div class="list-group position-absolute w-100 shadow-sm itemSuggestions" data-row="${idx}"
+                        style="z-index:10;max-height:180px;overflow-y:auto;display:none;"></div>
+                </div>
+            </td>
+            <td class="text-muted small align-middle text-nowrap itemSpec" data-row="${idx}">${supplySpec || '-'}</td>
+            <td><input type="number" class="form-control form-control-sm itemQty ${isError ? 'is-invalid' : ''}" min="1" value="${qty || 1}" data-row="${idx}"></td>
+            <td class="text-center text-nowrap itemStock ${stockQty !== undefined && stockQty !== null && stockQty !== '' && Number(stockQty) <= 0 ? 'text-danger fw-bold' : ''}" data-row="${idx}">${stockText}</td>
+            <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm removeRowBtn" data-row="${idx}"><i class="fas fa-trash-alt"></i></button></td>
+        `;
+        itemsBody.appendChild(tr);
+        bindRowEvents(tr, idx);
+        updateHint();
+    }
+
+    function bindRowEvents(tr, idx) {
+        const searchInput = tr.querySelector(`.itemSearch[data-row="${idx}"]`);
+        const hiddenInput = tr.querySelector(`.itemSupplyId[data-row="${idx}"]`);
+        const suggestions = tr.querySelector(`.itemSuggestions[data-row="${idx}"]`);
+        const stockCell = tr.querySelector(`.itemStock[data-row="${idx}"]`);
+        const specCell = tr.querySelector(`.itemSpec[data-row="${idx}"]`);
+
+        let debounce = null;
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounce);
+            hiddenInput.value = '';
+            stockCell.textContent = '-';
+            stockCell.className = 'text-center itemStock';
+            specCell.textContent = '-';
+            // 清除该行的错误高亮
+            tr.classList.remove('table-danger');
+            searchInput.classList.remove('is-invalid');
+            tr.querySelector('.itemQty').classList.remove('is-invalid');
+            const q = searchInput.value.trim();
+            if (!q) { suggestions.style.display = 'none'; return; }
+            debounce = setTimeout(() => {
+                fetch('{% url "supply_name_search" %}?q=' + encodeURIComponent(q))
+                    .then(r => r.json())
+                    .then(data => {
+                        suggestions.innerHTML = '';
+                        if (!data.results.length) { suggestions.style.display = 'none'; return; }
+                        data.results.forEach(item => {
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1';
+                            btn.innerHTML = `<span>${item.name}${item.specification ? ' (' + item.specification + ')' : ''}</span><span class="badge bg-light text-dark">库存 ${item.quantity} ${item.unit || ''}</span>`;
+                            btn.addEventListener('click', () => {
+                                // 检查是否已存在相同物品
+                                const existing = findExistingSupplyId(item.id, idx);
+                                if (existing) {
+                                    alert(`物品「${item.name}」已在第 ${existing} 行，请修改已有行的数量，不要重复添加。`);
+                                    return;
+                                }
+                                searchInput.value = `${item.name}${item.specification ? '(' + item.specification + ')' : ''}`;
+                                hiddenInput.value = item.id;
+                                stockCell.textContent = item.quantity + ' ' + (item.unit || '');
+                                stockCell.className = 'text-center itemStock' + (item.quantity <= 0 ? ' text-danger fw-bold' : '');
+                                specCell.textContent = item.specification || '-';
+                                suggestions.style.display = 'none';
+                            });
+                            suggestions.appendChild(btn);
+                        });
+                        suggestions.style.display = 'block';
+                    }).catch(() => { suggestions.style.display = 'none'; });
+            }, 200);
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const firstBtn = suggestions.querySelector('button');
+                if (firstBtn) firstBtn.click();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!suggestions.contains(e.target) && e.target !== searchInput) suggestions.style.display = 'none';
+        });
+
+        tr.querySelector(`.removeRowBtn[data-row="${idx}"]`).addEventListener('click', () => {
+            tr.remove();
+            renumber();
+            updateHint();
+        });
+    }
+
+    function renumber() {
+        let n = 0;
+        itemsBody.querySelectorAll('tr').forEach(tr => {
+            n++;
+            tr.querySelector('td:first-child').textContent = n;
+        });
+    }
+
+    function updateHint() {
+        const count = itemsBody.querySelectorAll('tr').length;
+        if (count === 0) {
+            itemsHint.textContent = '点击「添加物品」开始，每行通过首字母/编码查找物品后填写出库数量';
+            itemsHint.className = 'form-text text-muted';
+        } else {
+            itemsHint.textContent = `已添加 ${count} 项物品`;
+            itemsHint.className = 'form-text text-success';
+        }
+    }
+
+    document.getElementById('addItemBtn').addEventListener('click', () => addRow());
+
+    // ========== 恢复已录入数据（服务端直传） ==========
+    const restoredItems = {{ restored_items_json|safe }};
+    const errorIndices = {{ error_indices_json|safe }};
+
+    if (restoredItems && restoredItems.length > 0) {
+        restoredItems.forEach((item, i) => {
+            const isError = errorIndices.includes(i);
+            addRow(
+                String(item.supply_id),
+                item.name,
+                item.specification || '',
+                item.quantity,
+                item.stock,
+                item.unit,
+                isError
+            );
+        });
+    } else {
+        addRow();
+    }
+
+    // ========== 提交校验 ==========
+    document.getElementById('stockoutForm').addEventListener('submit', (e) => {
+        let ok = true;
+
+        // 部门校验
+        if (!deptRefs.hiddenInput.value) {
+            deptRefs.hint.textContent = '请先查找并录入一个有效部门';
+            deptRefs.hint.className = 'form-text text-danger';
+            document.getElementById('deptQuickSearch').focus();
+            ok = false;
+        }
+
+        // 收集明细
+        const items = [];
+        itemsBody.querySelectorAll('tr').forEach(tr => {
+            const supplyId = tr.querySelector('.itemSupplyId').value;
+            const qty = parseInt(tr.querySelector('.itemQty').value) || 0;
+            if (supplyId && qty > 0) {
+                items.push({ supply_id: supplyId, quantity: qty });
+            }
+        });
+
+        if (items.length === 0) {
+            itemsHint.textContent = '请至少添加一项出库物品';
+            itemsHint.className = 'form-text text-danger';
+            ok = false;
+        }
+
+        if (!ok) { e.preventDefault(); return; }
+
+        document.getElementById('id_items_json').value = JSON.stringify(items);
+    });
+})();
+</script>
+{% endblock %}
