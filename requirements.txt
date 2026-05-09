@@ -1,0 +1,32 @@
+# 办公用品管理系统依赖清单
+# 生成时间: 2026-03-25  |  更新: 2026-04-30
+
+# Django 核心框架
+Django==6.0.3
+
+# ASGI 支持
+asgiref==3.11.1
+
+# SQL 解析
+sqlparse==0.5.5
+
+# Excel 文件处理
+openpyxl==3.1.5
+et_xmlfile==2.0.0
+
+# 打包工具 (可选，用于生成可执行文件)
+pyinstaller==6.19.0
+pyinstaller-hooks-contrib==2026.3
+altgraph==0.17.5
+
+# 中文拼音转换（首字母快捷查找）
+pypinyin==0.55.0
+
+# 系统托盘（仅 Windows 打包需要）
+pystray==0.19.5
+Pillow>=10.0.0
+six>=1.16.0          # pystray 隐式依赖
+
+# 构建工具
+packaging==26.0
+setuptools==82.0.1
