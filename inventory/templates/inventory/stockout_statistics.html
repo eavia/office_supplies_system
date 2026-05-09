@@ -1,0 +1,115 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}出库统计{% endblock %}
+
+{% block content %}
+<!-- 日期筛选 -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-calendar-alt me-2" style="color:#0075de;"></i>日期范围筛选</h5>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">开始日期</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">结束日期</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-1"></i> 查询
+                </button>
+                <a href="{% url 'stockout_statistics' %}" class="btn btn-outline-secondary ms-2">重置</a>
+            </div>
+        </form>
+        
+        {% if start_date or end_date %}
+        <div class="alert alert-info mt-3 mb-0">
+            <i class="fas fa-filter me-2"></i>
+            当前筛选范围：<strong>{{ start_date|default:"不限" }} </strong> 至 <strong>{{ end_date|default:"不限" }}</strong>
+            <span class="ms-3">| 共 <strong>{{ total_count }}</strong> 笔 / <strong>{{ total_quantity }}</strong> 件</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2" style="color:#4299e1;"></i>按月份统计</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>月份</th>
+                                <th>出库次数</th>
+                                <th>总数量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in monthly_stats %}
+                            <tr>
+                                <td>{{ stat.month|date:"Y年m月" }}</td>
+                                <td>{{ stat.count }}</td>
+                                <td><strong>{{ stat.total_quantity }}</strong></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-5">
+                                    <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                                    暂无数据
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2" style="color:#48bb78;"></i>按出库类型统计</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>出库类型</th>
+                                <th>次数</th>
+                                <th>总数量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in type_stats %}
+                            <tr>
+                                <td>{{ stat.order__out_type }}</td>
+                                <td>{{ stat.count }}</td>
+                                <td><strong>{{ stat.total_quantity }}</strong></td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-5">
+                                    <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                                    暂无数据
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
