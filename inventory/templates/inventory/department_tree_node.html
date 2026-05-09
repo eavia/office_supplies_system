@@ -1,0 +1,50 @@
+<div class="tree-node" style="padding-left: {% if level > 0 %}24px{% else %}0{% endif %}">
+    <div class="tree-node-content">
+        {% if node.children.exists %}
+        <span class="tree-toggle">
+            <i class="fas fa-chevron-down"></i>
+        </span>
+        {% else %}
+        <span class="tree-toggle empty">
+            <i class="fas fa-circle" style="font-size:0.4rem;"></i>
+        </span>
+        {% endif %}
+
+        <div class="tree-icon {% if level == 0 %}root{% else %}child{% endif %}">
+            <i class="fas {% if level == 0 %}fa-building{% else %}fa-door-open{% endif %}"></i>
+        </div>
+
+        <div class="tree-info">
+            <div class="tree-name">
+                {{ node.name }}
+                {% if not node.is_active %}
+                <span class="badge-inactive">已停用</span>
+                {% endif %}
+            </div>
+            <div class="tree-meta">
+                编码: {{ node.code }} | 排序: {{ node.sort_order }}
+                {% if node.description %}| {{ node.description|truncatechars:30 }}{% endif %}
+            </div>
+        </div>
+
+        <div class="tree-actions">
+            <a href="{% url 'department_create' %}?parent={{ node.id }}" class="btn btn-sm btn-outline-success" title="添加子部门">
+                <i class="fas fa-plus"></i>
+            </a>
+            <a href="{% url 'department_update' node.pk %}" class="btn btn-sm btn-outline-primary" title="编辑">
+                <i class="fas fa-edit"></i>
+            </a>
+            <a href="{% url 'department_delete' node.pk %}" class="btn btn-sm btn-outline-danger" title="删除">
+                <i class="fas fa-trash"></i>
+            </a>
+        </div>
+    </div>
+
+    {% if node.children.exists %}
+    <div class="tree-children">
+        {% for child in node.children.all %}
+            {% include 'inventory/department_tree_node.html' with node=child level=level|add:1 %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
