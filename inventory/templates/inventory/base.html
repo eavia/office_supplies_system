@@ -1,0 +1,656 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}办公用品管理系统{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            /* 颜色系统 */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f6f5f4;
+            --text-primary: rgba(0,0,0,0.95);
+            --text-secondary: #615d59;
+            --brand-blue: #0075de;
+            --border-standard: rgba(0,0,0,0.1);
+            /* 间距系统（8px基准） */
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 12px;
+            --space-lg: 16px;
+            --space-xl: 20px;
+            --space-2xl: 24px;
+            --space-3xl: 32px;
+            /* 圆角系统 */
+            --radius-sm: 4px;
+            --radius-md: 6px;
+            --radius-lg: 10px;
+            --radius-xl: 12px;
+            /* 阴影系统 */
+            --shadow-card: 0 1px 2px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.04), 0 4px 8px rgba(0,0,0,0.04), 0 8px 16px rgba(0,0,0,0.04);
+            --shadow-elevated: 0 2px 4px rgba(0,0,0,0.05), 0 4px 8px rgba(0,0,0,0.05), 0 8px 16px rgba(0,0,0,0.05), 0 16px 32px rgba(0,0,0,0.05);
+            /* Legacy compat */
+            --sidebar-bg: #1a1f2e;
+            --sidebar-active: rgba(0, 117, 222, 0.2);
+            --sidebar-hover: rgba(255,255,255,0.05);
+        }
+        
+        * { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+        
+        body {
+            background: var(--bg-secondary);
+            min-height: 100vh;
+        }
+        
+        /* ===== Sidebar ===== */
+        .sidebar {
+            min-height: 100vh;
+            background: var(--sidebar-bg);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 260px;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-brand {
+            padding: var(--space-2xl) var(--space-xl);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        
+        .sidebar-brand h5 {
+            color: white;
+            font-weight: 600;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        .sidebar-brand .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-gradient);
+            border-radius: var(--radius-lg);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: var(--space-md);
+            font-size: 1.2rem;
+        }
+        
+        .sidebar-menu {
+            padding: var(--space-lg) var(--space-md);
+        }
+        
+        .sidebar-menu .nav-link {
+            color: rgba(255,255,255,0.7);
+            padding: var(--space-md) var(--space-lg);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-xs);
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+        }
+        
+        .sidebar-menu .nav-link:hover {
+            background: var(--sidebar-hover);
+            color: white;
+        }
+        
+        .sidebar-menu .nav-link.active {
+            background: var(--sidebar-active);
+            color: #5ba8f5;
+        }
+        
+        .sidebar-menu .nav-link i {
+            width: 24px;
+            text-align: center;
+            margin-right: var(--space-sm);
+            font-size: 0.95rem;
+        }
+        
+        .sidebar-menu .submenu {
+            padding-left: 34px;
+        }
+        
+        .sidebar-menu .submenu .nav-link {
+            padding: var(--space-sm) var(--space-lg);
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.55);
+        }
+        
+        .sidebar-menu .submenu .nav-link:hover,
+        .sidebar-menu .submenu .nav-link.active {
+            color: white;
+            background: none;
+        }
+        
+        .sidebar-menu .submenu .nav-link.active::before {
+            content: '';
+            width: 4px;
+            height: 4px;
+            background: var(--brand-blue);
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        /* ===== Main Content ===== */
+        .main-wrapper {
+            margin-left: 260px;
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+        
+        .topbar {
+            background: var(--bg-primary);
+            padding: var(--space-lg) var(--space-3xl);
+            box-shadow: var(--shadow-card);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .topbar-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .topbar-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-lg);
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .btn-logout {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: var(--bg-secondary);
+            color: #e53e3e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-logout:hover {
+            background: #e53e3e;
+            color: white;
+        }
+        
+        /* ===== Content Area ===== */
+        .content-area {
+            padding: var(--space-2xl) var(--space-3xl);
+        }
+        
+        /* ===== Cards ===== */
+        .card {
+            border: none;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            background: white;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: white;
+            border-bottom: 1px solid var(--border-standard);
+            padding: var(--space-xl) var(--space-2xl);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .card-header h5, .card-header h4 {
+            margin: 0;
+            font-weight: 600;
+        }
+        
+        .card-body {
+            padding: var(--space-2xl);
+        }
+        
+        .card-footer {
+            background: white;
+            border-top: 1px solid var(--border-standard);
+            padding: var(--space-lg) var(--space-2xl);
+        }
+        
+        /* ===== Stat Cards ===== */
+        .stat-card {
+            border: none;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            background: white;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--brand-blue);
+        }
+        
+        .stat-card.primary::before { background: var(--brand-blue); }
+        .stat-card.warning::before { background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%); }
+        .stat-card.info::before { background: linear-gradient(135deg, #63b3ed 0%, #4299e1 100%); }
+        .stat-card.success::before { background: linear-gradient(135deg, #68d391 0%, #48bb78 100%); }
+        .stat-card.danger::before { background: linear-gradient(135deg, #fc8181 0%, #f56565 100%); }
+        
+        .stat-card .card-body {
+            padding: var(--space-2xl);
+        }
+        
+        .stat-card .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: var(--space-sm) 0;
+        }
+        
+        .stat-card .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .stat-card .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-xl);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+        
+        .stat-card.primary .stat-icon { background: rgba(0, 117, 222, 0.1); color: var(--brand-blue); }
+        .stat-card.warning .stat-icon { background: rgba(237, 137, 54, 0.1); color: #ed8936; }
+        .stat-card.info .stat-icon { background: rgba(66, 153, 225, 0.1); color: #4299e1; }
+        .stat-card.success .stat-icon { background: rgba(72, 187, 120, 0.1); color: #48bb78; }
+        .stat-card.danger .stat-icon { background: rgba(245, 101, 101, 0.1); color: #f56565; }
+        
+        /* ===== Tables ===== */
+        .table-container {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+        
+        .table-container .table {
+            margin: 0;
+        }
+        
+        .table-container thead th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: var(--space-lg);
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .table-container tbody td {
+            padding: var(--space-lg);
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            border-bottom: 1px solid var(--border-standard);
+            vertical-align: middle;
+        }
+        
+        .table-container tbody tr:hover {
+            background: var(--bg-secondary);
+        }
+        
+        .table-container tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* ===== Buttons ===== */
+        .btn {
+            border-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-xl);
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-primary {
+            background: var(--brand-blue);
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 117, 222, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            border: none;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            border: none;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+            border: none;
+            color: white;
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            border: none;
+            color: white;
+        }
+        
+        .btn-outline-secondary {
+            border: 1px solid var(--border-standard);
+            color: var(--text-secondary);
+        }
+        
+        .btn-outline-secondary:hover {
+            background: var(--bg-secondary);
+            border-color: var(--border-standard);
+        }
+        
+        .btn-sm {
+            padding: var(--space-xs) var(--space-md);
+            font-size: 0.85rem;
+            border-radius: var(--radius-md);
+        }
+        
+        /* ===== Forms ===== */
+        .form-control, .form-select {
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-standard);
+            padding: var(--space-md) 14px;
+            font-size: 0.9rem;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--brand-blue);
+            box-shadow: 0 0 0 3px rgba(0, 117, 222, 0.1);
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: var(--space-xs);
+        }
+        
+        /* ===== Badges ===== */
+        .badge {
+            padding: var(--space-xs) var(--space-md);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            font-size: 0.8rem;
+        }
+        
+        .bg-success { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%) !important; }
+        .bg-warning { background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%) !important; }
+        .bg-danger { background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%) !important; }
+        .bg-info { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%) !important; }
+        .bg-primary { background: var(--brand-blue) !important; }
+        .bg-secondary { background: linear-gradient(135deg, #a0aec0 0%, #615d59 100%) !important; }
+        
+        /* ===== Alerts ===== */
+        .alert {
+            border: none;
+            border-radius: var(--radius-xl);
+            padding: var(--space-lg) var(--space-xl);
+        }
+        
+        .alert-info {
+            background: #ebf8ff;
+            color: #2b6cb0;
+        }
+        
+        .alert-success {
+            background: #f0fff4;
+            color: #276749;
+        }
+        
+        .alert-danger {
+            background: #fff5f5;
+            color: #c53030;
+        }
+        
+        .alert-warning {
+            background: #fffaf0;
+            color: #c05621;
+        }
+        
+        /* ===== Pagination ===== */
+        .pagination .page-link {
+            border: none;
+            border-radius: var(--radius-md);
+            margin: 0 2px;
+            color: var(--text-secondary);
+            padding: var(--space-sm) 14px;
+        }
+        
+        .pagination .page-item.active .page-link {
+            background: var(--brand-blue);
+            color: white;
+        }
+        
+        .pagination .page-link:hover {
+            background: var(--bg-secondary);
+        }
+        
+        /* ===== Quick Actions ===== */
+        .quick-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-2xl) var(--space-lg);
+            border-radius: var(--radius-lg);
+            background: white;
+            box-shadow: var(--shadow-card);
+            text-decoration: none;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        
+        .quick-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+            color: var(--brand-blue);
+            border-color: rgba(0, 117, 222, 0.2);
+        }
+        
+        .quick-action i {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+        
+        /* ===== Mobile ===== */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .main-wrapper {
+                margin-left: 0;
+            }
+            .content-area {
+                padding: var(--space-lg);
+            }
+        }
+        
+        /* ===== Animation ===== */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .card, .stat-card, .table-container {
+            animation: fadeIn 0.4s ease;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="d-flex align-items-center">
+                <div class="brand-icon">
+                    <i class="fas fa-boxes text-white"></i>
+                </div>
+                <h5>办公用品管理</h5>
+            </div>
+        </div>
+        
+        <div class="sidebar-menu">
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'home' %}">
+                        <i class="fas fa-home"></i> 首页
+                    </a>
+                </li>
+                
+                <li class="nav-item">
+                    <a class="nav-link {% if '/item-categories' in request.path %}active{% endif %}" 
+                       data-bs-toggle="collapse" href="#menu-basic-data">
+                        <i class="fas fa-database"></i> 基础数据管理
+                        <i class="fas fa-chevron-down ms-auto" style="font-size:0.7rem;"></i>
+                    </a>
+                    <div class="collapse {% if '/item-categories' in request.path or '/departments' in request.path %}show{% endif %}" id="menu-basic-data">
+                        <div class="submenu">
+                            <a class="nav-link {% if '/item-categories' in request.path %}active{% endif %}" href="{% url 'item_category_list' %}">物品分类</a>
+                            <a class="nav-link {% if '/departments' in request.path %}active{% endif %}" href="{% url 'department_list' %}">部门管理</a>
+                        </div>
+                    </div>
+                </li>
+                
+                <li class="nav-item">
+                    <a class="nav-link {% if '/supplies' in request.path or '/returns' in request.path %}active{% endif %}" 
+                       data-bs-toggle="collapse" href="#menu-supplies">
+                        <i class="fas fa-box"></i> 办公用品管理
+                        <i class="fas fa-chevron-down ms-auto" style="font-size:0.7rem;"></i>
+                    </a>
+                    <div class="collapse {% if '/supplies' in request.path or '/returns' in request.path %}show{% endif %}" id="menu-supplies">
+                        <div class="submenu">
+                            <a class="nav-link {% if '/supplies' in request.path and 'import' not in request.path and 'export' not in request.path and 'template' not in request.path %}active{% endif %}" 
+                               href="{% url 'supply_list' %}">库存一览</a>
+                            <a class="nav-link {% if '/returns' in request.path %}active{% endif %}" href="{% url 'return_list' %}">归还申请</a>
+                        </div>
+                    </div>
+                </li>
+                
+                <li class="nav-item">
+                    <a class="nav-link {% if '/stockin' in request.path or '/stockout' in request.path or '/approvals' in request.path or '/statistics' in request.path %}active{% endif %}" 
+                       data-bs-toggle="collapse" href="#menu-stock">
+                        <i class="fas fa-sign-in-alt"></i> 出入库管理
+                        <i class="fas fa-chevron-down ms-auto" style="font-size:0.7rem;"></i>
+                    </a>
+                    <div class="collapse {% if '/stockin' in request.path or '/stockout' in request.path or '/approvals' in request.path or '/statistics' in request.path %}show{% endif %}" id="menu-stock">
+                        <div class="submenu">
+                            <a class="nav-link {% if '/stockin/applications' in request.path %}active{% endif %}" href="{% url 'stockin_application_list' %}">入库申请查询</a>
+                            <a class="nav-link {% if '/stockout' in request.path and '/statistics' not in request.path %}active{% endif %}" href="{% url 'stockout_list' %}">出库记录查询</a>
+                            <a class="nav-link {% if '/approvals' in request.path %}active{% endif %}" href="{% url 'approval_list' %}">入出库审批</a>
+                            <a class="nav-link {% if '/statistics/stockin' in request.path %}active{% endif %}" href="{% url 'stockin_statistics' %}">入库统计</a>
+                            <a class="nav-link {% if '/statistics/stockout' in request.path %}active{% endif %}" href="{% url 'stockout_statistics' %}">出库统计</a>
+                        </div>
+                    </div>
+                </li>
+                
+                <li class="nav-item">
+                    <a class="nav-link {% if '/devices' in request.path or '/computer-types' in request.path %}active{% endif %}" 
+                       data-bs-toggle="collapse" href="#menu-it">
+                        <i class="fas fa-desktop"></i> IT设备管理
+                        <i class="fas fa-chevron-down ms-auto" style="font-size:0.7rem;"></i>
+                    </a>
+                    <div class="collapse {% if '/devices' in request.path or '/computer-types' in request.path %}show{% endif %}" id="menu-it">
+                        <div class="submenu">
+                            <a class="nav-link {% if '/devices' in request.path and 'import' not in request.path and 'export' not in request.path and 'template' not in request.path %}active{% endif %}" 
+                               href="{% url 'device_list' %}">计算机资源一览</a>
+                            <a class="nav-link {% if '/computer-types' in request.path %}active{% endif %}" href="{% url 'computer_type_list' %}">计算机类型一览</a>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <div class="main-wrapper">
+        <!-- Topbar -->
+        <div class="topbar">
+            <div class="d-flex align-items-center">
+                <button class="btn btn-sm btn-outline-secondary d-md-none me-3" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <span class="topbar-title">{% block page_title %}系统首页{% endblock %}</span>
+            </div>
+            <div class="topbar-user">
+                <div class="user-badge">
+                    <i class="fas fa-user-circle text-muted"></i>
+                    <span>{{ user.username }}</span>
+                </div>
+                <form method="post" action="/logout/" style="display:inline; margin:0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-logout" title="退出">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Content Area -->
+        <div class="content-area">
+            <!-- Messages -->
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-4" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>{{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+            
+            <!-- Page Content -->
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
