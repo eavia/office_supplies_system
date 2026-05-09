@@ -1,0 +1,217 @@
+{% extends 'inventory/base.html' %}
+
+{% block title %}系统首页 - 办公用品管理系统{% endblock %}
+{% block page_title %}系统首页{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-label">办公用品库存</div>
+                        <div class="stat-value">{{ supply_count }}</div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'supply_list' %}" class="text-decoration-none" style="color:#0075de;">
+                    查看详情 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-label">低库存预警</div>
+                        <div class="stat-value">{{ low_stock_count }}</div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'supply_list' %}?status=低库存" class="text-decoration-none" style="color:#ed8936;">
+                    查看详情 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-label">待审批申请</div>
+                        <div class="stat-value">{{ pending_count }}</div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'approval_list' %}" class="text-decoration-none" style="color:#4299e1;">
+                    去审批 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-label">IT设备总数</div>
+                        <div class="stat-value">{{ device_count }}</div>
+                    </div>
+                    <div class="stat-icon">
+                        <i class="fas fa-desktop"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'device_list' %}" class="text-decoration-none" style="color:#48bb78;">
+                    查看详情 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 快捷操作 -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <h5 class="mb-3" style="font-weight:600; color:#1a1f2e;">快捷操作</h5>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'supply_create' %}" class="quick-action">
+            <i class="fas fa-plus-circle" style="color:#0075de;"></i>
+            <span>物品登记</span>
+        </a>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'stockout_create' %}" class="quick-action">
+            <i class="fas fa-sign-out-alt" style="color:#48bb78;"></i>
+            <span>出库登记</span>
+        </a>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'stockin_application_create' %}" class="quick-action">
+            <i class="fas fa-file-alt" style="color:#4299e1;"></i>
+            <span>入库申请</span>
+        </a>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'return_create' %}" class="quick-action">
+            <i class="fas fa-undo" style="color:#ed8936;"></i>
+            <span>归还申请</span>
+        </a>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'device_create' %}" class="quick-action">
+            <i class="fas fa-laptop" style="color:#a0aec0;"></i>
+            <span>设备登记</span>
+        </a>
+    </div>
+    <div class="col-md-2 col-6">
+        <a href="{% url 'computer_type_create' %}" class="quick-action">
+            <i class="fas fa-plus-square" style="color:#0075de;"></i>
+            <span>类型追加</span>
+        </a>
+    </div>
+</div>
+
+<!-- 最近动态 -->
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-file-import me-2" style="color:#0075de;"></i>最近入库申请</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_applications %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>申请单号</th>
+                                <th>入库物品</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in recent_applications %}
+                            <tr>
+                                <td>{{ app.application_no }}</td>
+                                <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}">
+                                    {% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}
+                                </td>
+                                <td>
+                                    {% if app.status == '待审批' %}
+                                    <span class="badge bg-warning">待审批</span>
+                                    {% elif app.status == '已批准' %}
+                                    <span class="badge bg-success">已批准</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">已拒绝</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">暂无入库申请</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>最近出库记录</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_outs %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>出库单号</th>
+                                <th>出库物品</th>
+                                <th>领用人</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for out in recent_outs %}
+                            <tr>
+                                <td>{{ out.record_no }}</td>
+                                <td>
+                                    {% for item in out.items.all %}
+                                    {{ item.supply.name }}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td>{{ out.recipient }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">暂无出库记录</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
