@@ -1,0 +1,53 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-file-excel me-2" style="color:#4299e1;"></i>{{ title }}</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h6 style="font-weight:600;"><i class="fas fa-info-circle me-2"></i>Excel文件格式要求</h6>
+                    <p class="mb-1"><strong>表头顺序：</strong>设备编号 | 设备类型 | 资产编号 | 序列号 | 采购日期 | 采购价格 | 存放位置 | 使用人 | 使用部门 | 状态 | 备注</p>
+                    <p class="mb-0 small">设备编号和设备类型为必填项；设备类型不存在时会自动创建；更新现有记录时按设备编号匹配</p>
+                </div>
+                
+                <div class="alert alert-success">
+                    <i class="fas fa-download me-2"></i>
+                    <strong>首次导入？</strong> 
+                    <a href="{% url 'device_template' %}" class="alert-link">点击下载导入模板</a>，按模板格式填写后上传。
+                </div>
+                
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ form.excel_file.label }}</label>
+                        {{ form.excel_file }}
+                        {% if form.excel_file.errors %}
+                        <div class="text-danger small mt-1">{{ form.excel_file.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        {{ form.update_existing }}
+                        <label class="form-check-label">{{ form.update_existing.label }}</label>
+                    </div>
+                    
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'device_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-1"></i>取消
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-upload me-1"></i> 开始导入
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
