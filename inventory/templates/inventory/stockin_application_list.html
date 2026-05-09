@@ -1,0 +1,104 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}入库申请查询{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{% url 'stockin_application_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> 新增入库申请
+        </a>
+    </div>
+    <form method="get" class="row g-2">
+        <div class="col-auto">
+            <input type="text" name="q" class="form-control" placeholder="搜索单号/物品" value="{{ query }}">
+        </div>
+        <div class="col-auto">
+            <select name="status" class="form-select">
+                <option value="">全部状态</option>
+                <option value="待审批" {% if status_filter == '待审批' %}selected{% endif %}>待审批</option>
+                <option value="已批准" {% if status_filter == '已批准' %}selected{% endif %}>已批准</option>
+                <option value="已拒绝" {% if status_filter == '已拒绝' %}selected{% endif %}>已拒绝</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-outline-secondary">
+                <i class="fas fa-filter me-1"></i>筛选
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>申请单号</th>
+                    <th>物品</th>
+                    <th>申请人</th>
+                    <th>部门</th>
+                    <th>状态</th>
+                    <th>申请时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in page_obj %}
+                <tr>
+                    <td><strong>{{ app.application_no }}</strong></td>
+                    <td>{{ app.get_items_summary }}</td>
+                    <td>{{ app.applicant.username }}</td>
+                    <td>{{ app.department }}</td>
+                    <td>
+                        {% if app.status == '待审批' %}
+                        <span class="badge bg-warning">待审批</span>
+                        {% elif app.status == '已批准' %}
+                        <span class="badge bg-success">已批准</span>
+                        {% else %}
+                        <span class="badge bg-danger">已拒绝</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ app.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        <a href="{% url 'stockin_application_detail' app.pk %}" class="btn btn-sm btn-outline-info" title="查看明细">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        {% if app.status == '待审批' %}
+                        <a href="{% url 'stockin_application_update' app.pk %}" class="btn btn-sm btn-outline-primary" title="变更">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <a href="{% url 'stockin_application_delete' app.pk %}" class="btn btn-sm btn-outline-danger" title="删除">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                        暂无数据
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if page_obj.has_other_pages %}
+    <nav class="p-3">
+        <ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1">首页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+            {% endif %}
+            <li class="page-item active"><span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">末页</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
