@@ -16,7 +16,7 @@ urlpatterns = [
     path('supplies/import/', views.supply_import_excel, name='supply_import'),
     path('supplies/template/', views.supply_template_download, name='supply_template'),
     
-    # 入库申请管理
+    # 入库单管理
     path('stockin/applications/', views.stockin_application_list, name='stockin_application_list'),
     path('stockin/applications/create/', views.stockin_application_create, name='stockin_application_create'),
     path('stockin/applications/<int:pk>/update/', views.stockin_application_update, name='stockin_application_update'),

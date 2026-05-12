@@ -94,15 +94,15 @@ class SystemTestCase(TestCase):
                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         print("✓ 库存导出功能正常")
     
-    # ========== 入库申请测试 ==========
+    # ========== 入库单测试 ==========
     def test_stockin_application_list(self):
-        """测试入库申请列表"""
+        """测试入库单列表"""
         response = self.client.get('/stockin/applications/')
         self.assertEqual(response.status_code, 200)
-        print("✓ 入库申请列表页正常")
+        print("✓ 入库单列表页正常")
     
     def test_stockin_application_create(self):
-        """测试入库申请创建（多物品）"""
+        """测试入库单创建（多物品）"""
         import json
         from inventory.models import Department
         dept = Department.objects.first()
@@ -113,7 +113,7 @@ class SystemTestCase(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(StockInApplication.objects.filter(items__supply=self.supply, items__quantity=50).exists())
-        print("✓ 入库申请创建功能正常")
+        print("✓ 入库单创建功能正常")
     
     # ========== 审批测试 ==========
     def test_approval_list(self):

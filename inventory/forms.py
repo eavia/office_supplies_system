@@ -72,7 +72,7 @@ class OfficeSupplyForm(forms.ModelForm):
 
 
 class StockInApplicationForm(forms.ModelForm):
-    """入库申请表单（多物品，只选已有）"""
+    """入库单表单（多物品，只选已有）"""
     class Meta:
         model = StockInApplication
         fields = ['department', 'reason', 'stockin_date', 'counterpart_doc_no', 'invoice_no']

@@ -245,7 +245,7 @@ class Department(models.Model):
 
 
 class StockInApplication(models.Model):
-    """入库申请表（支持多物品）"""
+    """入库单表（支持多物品）"""
     application_no = models.CharField('申请单号', max_length=50, unique=True)
     applicant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stockin_applications', verbose_name='申请人')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='申请部门')
@@ -261,8 +261,8 @@ class StockInApplication(models.Model):
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
 
     class Meta:
-        verbose_name = '入库申请'
-        verbose_name_plural = '入库申请管理'
+        verbose_name = '入库单'
+        verbose_name_plural = '入库单管理'
         ordering = ['-created_at']
 
     def __str__(self):
@@ -293,8 +293,8 @@ class StockInApplication(models.Model):
 
 
 class StockInItem(models.Model):
-    """入库申请明细"""
-    application = models.ForeignKey(StockInApplication, on_delete=models.CASCADE, related_name='items', verbose_name='入库申请')
+    """入库单明细"""
+    application = models.ForeignKey(StockInApplication, on_delete=models.CASCADE, related_name='items', verbose_name='入库单')
     supply = models.ForeignKey(OfficeSupply, on_delete=models.CASCADE, verbose_name='物品')
     quantity = models.IntegerField('申请数量')
     unit_price = models.DecimalField('单价', max_digits=10, decimal_places=2, default=0)

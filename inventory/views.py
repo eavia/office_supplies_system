@@ -91,7 +91,7 @@ def home(request):
     pending_stockout_count = StockOutOrder.objects.filter(status='待审批').count()
     device_count = ITDevice.objects.count()
     
-    # 最近入库申请
+    # 最近入库单
     recent_applications = StockInApplication.objects.select_related('applicant', 'department').prefetch_related('items__supply').order_by('-created_at')[:5]
     
     # 最近出库记录
@@ -260,7 +260,7 @@ def supply_name_search(request):
 
 
 def supply_create(request):
-    """物品信息登记 - 仅创建物品主数据，不设置库存（库存通过入库申请增加）"""
+    """物品信息登记 - 仅创建物品主数据，不设置库存（库存通过入库单增加）"""
     if request.method == 'POST':
         form = OfficeSupplyForm(request.POST)
         if form.is_valid():
@@ -269,11 +269,11 @@ def supply_create(request):
             supply.status = '正常'
             supply.save()
             # 模型 save() 会自动根据 quantity<=safety_stock 设状态，新物品 quantity=0 会被改为「低库存」，
-            # 此处覆盖回「正常」——库存为零是预期状态，实际库存只通过入库申请增加
+            # 此处覆盖回「正常」——库存为零是预期状态，实际库存只通过入库单增加
             if supply.status == '低库存':
                 supply.status = '正常'
                 supply.save(update_fields=['status'])
-            messages.success(request, f'物品 "{supply.name}" 登记成功！库存请通过入库申请增加。')
+            messages.success(request, f'物品 "{supply.name}" 登记成功！库存请通过入库单增加。')
             return redirect('supply_list')
     else:
         form = OfficeSupplyForm()
@@ -331,10 +331,10 @@ def supply_add_stock(request, pk):
     return render(request, 'inventory/supply_add_stock.html', {'supply': supply})
 
 
-# ==================== 入库申请管理 ====================
+# ==================== 入库单管理 ====================
 @login_required
 def stockin_application_list(request):
-    """入库申请查询（支持多物品）"""
+    """入库单查询（支持多物品）"""
     query = request.GET.get('q', '')
     status = request.GET.get('status', '')
 
@@ -361,7 +361,7 @@ def stockin_application_list(request):
 
 @login_required
 def stockin_application_create(request):
-    """入库申请登记（支持多物品，只选已有）"""
+    """入库单登记（支持多物品，只选已有）"""
     if request.method == 'POST':
         form = StockInApplicationForm(request.POST)
         items_json = request.POST.get('items_json', '[]')
@@ -386,7 +386,7 @@ def stockin_application_create(request):
                     supply.item_category is not None and not supply.item_category.is_active
                 )
                 if is_supply_disabled:
-                    errors.append(f'{supply.code} - {supply.name} 已停用，禁止入库申请')
+                    errors.append(f'{supply.code} - {supply.name} 已停用，禁止入库')
                 elif qty <= 0:
                     errors.append(f'{supply.name}：入库数量必须大于 0')
 
@@ -394,7 +394,7 @@ def stockin_application_create(request):
                 for err in errors:
                     messages.error(request, err)
                 return render(request, 'inventory/stockin_application_form.html', {
-                    'form': form, 'title': '入库申请', 'action': '提交'
+                    'form': form, 'title': '入库单', 'action': '提交'
                 })
 
             # 合并相同物品（防止重复物品行）
@@ -420,7 +420,7 @@ def stockin_application_create(request):
                 unit_price = Decimal(str(item.get('unit_price', supply.price or 0)))
                 StockInItem.objects.create(application=app, supply=supply, quantity=qty, unit_price=unit_price)
 
-            messages.success(request, f'入库申请 "{app.application_no}" 提交成功，共 {len(items_data)} 项物品！')
+            messages.success(request, f'入库单 "{app.application_no}" 提交成功，共 {len(items_data)} 项物品！')
             return redirect('stockin_application_list')
         else:
             if not items_data:
@@ -430,14 +430,14 @@ def stockin_application_create(request):
 
     return render(request, 'inventory/stockin_application_form.html', {
         'form': form,
-        'title': '入库申请',
+        'title': '入库单',
         'action': '提交'
     })
 
 
 @login_required
 def stockin_application_update(request, pk):
-    """入库申请变更（支持多物品）"""
+    """入库单变更（支持多物品）"""
     application = get_object_or_404(StockInApplication, pk=pk)
     if application.status != '待审批':
         messages.error(request, '已审批的申请不能修改！')
@@ -467,7 +467,7 @@ def stockin_application_update(request, pk):
                     supply.item_category is not None and not supply.item_category.is_active
                 )
                 if is_supply_disabled:
-                    errors.append(f'{supply.code} - {supply.name} 已停用，禁止入库申请')
+                    errors.append(f'{supply.code} - {supply.name} 已停用，禁止入库')
                 elif qty <= 0:
                     errors.append(f'{supply.name}：入库数量必须大于 0')
 
@@ -499,7 +499,7 @@ def stockin_application_update(request, pk):
                 unit_price = Decimal(str(item.get('unit_price', supply.price or 0)))
                 StockInItem.objects.create(application=application, supply=supply, quantity=qty, unit_price=unit_price)
 
-            messages.success(request, '入库申请更新成功！')
+            messages.success(request, '入库单更新成功！')
             return redirect('stockin_application_list')
         else:
             if not items_data:
@@ -517,7 +517,7 @@ def stockin_application_update(request, pk):
 
 @login_required
 def stockin_application_delete(request, pk):
-    """入库申请删除"""
+    """入库单删除"""
     application = get_object_or_404(StockInApplication, pk=pk)
     if application.status != '待审批':
         messages.error(request, '已审批的申请不能删除！')
@@ -525,14 +525,14 @@ def stockin_application_delete(request, pk):
 
     if request.method == 'POST':
         application.delete()
-        messages.success(request, '入库申请已删除！')
+        messages.success(request, '入库单已删除！')
         return redirect('stockin_application_list')
     return render(request, 'inventory/stockin_application_confirm_delete.html', {'application': application})
 
 
 @login_required
 def stockin_application_detail(request, pk):
-    """入库申请明细查看"""
+    """入库单明细查看"""
     application = get_object_or_404(
         StockInApplication.objects.select_related('applicant', 'department', 'approver').prefetch_related('items__supply'),
         pk=pk
@@ -549,7 +549,7 @@ def approval_list(request):
     status_filter = request.GET.get('status', '待审批')
     type_filter = request.GET.get('type', '')
 
-    # 入库申请
+    # 入库单
     stockin_qs = StockInApplication.objects.prefetch_related('items__supply').select_related('applicant', 'department').all()
     if status_filter:
         stockin_qs = stockin_qs.filter(status=status_filter)
