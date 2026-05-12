@@ -2,14 +2,19 @@
 {% block page_title %}入库申请详情{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
+<div class="row justify-content-center" id="printArea">
     <div class="col-md-10">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center no-print">
                 <h4 class="mb-0"><i class="fas fa-file-alt me-2" style="color:#4299e1;"></i>入库申请详情</h4>
-                <a href="{% url 'stockin_application_list' %}" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-arrow-left me-1"></i>返回列表
-                </a>
+                <div class="d-flex gap-2">
+                    <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-print me-1"></i>打印
+                    </button>
+                    <a href="{% url 'stockin_application_list' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i>返回列表
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <!-- 基本信息 -->
@@ -102,8 +107,44 @@
                         </tfoot>
                     </table>
                 </div>
+
+                <!-- 签字栏（打印时显示） -->
+                <div class="signature-area">
+                    <table class="signature-table">
+                        <tr>
+                            <td class="sig-cell">
+                                <span class="sig-label">部门负责人：</span>
+                                <span class="sig-line"></span>
+                            </td>
+                            <td class="sig-cell">
+                                <span class="sig-label">保管人：</span>
+                                <span class="sig-line"></span>
+                            </td>
+                            <td class="sig-cell">
+                                <span class="sig-label">签收人：</span>
+                                <span class="sig-line"></span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
             </div>
         </div>
     </div>
 </div>
+
+<style>
+@media print {
+    .no-print, .sidebar, .navbar, .btn { display: none !important; }
+    body { margin: 0; padding: 0; }
+    .main-content { margin-left: 0 !important; padding: 10px !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    .signature-area { display: block !important; }
+}
+.signature-area { display: none; margin-top: 60px; }
+.signature-table { width: 100%; border-collapse: collapse; }
+.sig-cell { width: 33.33%; padding: 15px 10px; text-align: left; vertical-align: bottom; }
+.sig-label { font-weight: 600; font-size: 14px; }
+.sig-line { display: inline-block; min-width: 120px; border-bottom: 1px solid #333; margin-left: 5px; }
+</style>
 {% endblock %}
