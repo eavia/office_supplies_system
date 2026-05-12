@@ -32,13 +32,70 @@
                 </div>
             </div>
             <div class="card-body">
-                <!-- 基本信息（简化） -->
-                <div class="d-flex justify-content-between mb-3">
-                    <span><strong>单号：</strong>{{ order.record_no }}</span>
-                    <span><strong>出库时间：</strong>{{ order.created_at|date:"Y-m-d H:i" }}</span>
+                <!-- 基本信息 -->
+                <div class="detail-info-grid mb-4">
+                    <div class="detail-info-item">
+                        <span class="detail-label">出库单号</span>
+                        <span class="detail-value">{{ order.record_no }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">状态</span>
+                        <span class="detail-value">
+                            {% if order.status == '待审批' %}
+                            <span class="badge bg-warning">待审批</span>
+                            {% elif order.status == '已批准' %}
+                            <span class="badge bg-success">已批准</span>
+                            {% else %}
+                            <span class="badge bg-danger">已拒绝</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">领用人</span>
+                        <span class="detail-value">{{ order.recipient }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">领用部门</span>
+                        <span class="detail-value">{{ order.department|default:"-" }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">出库时间</span>
+                        <span class="detail-value">{{ order.created_at|date:"Y-m-d H:i" }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">出库类型</span>
+                        <span class="detail-value">{{ order.out_type }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">操作员</span>
+                        <span class="detail-value">{{ order.operator.username }}</span>
+                    </div>
+                    {% if order.approver %}
+                    <div class="detail-info-item">
+                        <span class="detail-label">审批人</span>
+                        <span class="detail-value">{{ order.approver.username }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">审批时间</span>
+                        <span class="detail-value">{{ order.approval_time|date:"Y-m-d H:i" }}</span>
+                    </div>
+                    {% endif %}
+                    {% if order.purpose %}
+                    <div class="detail-info-item full-width">
+                        <span class="detail-label">用途说明</span>
+                        <span class="detail-value">{{ order.purpose }}</span>
+                    </div>
+                    {% endif %}
+                    {% if order.approval_comment %}
+                    <div class="detail-info-item full-width">
+                        <span class="detail-label">审批意见</span>
+                        <span class="detail-value">{{ order.approval_comment }}</span>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- 物品明细 -->
+                <h6 class="section-title"><i class="fas fa-list me-2"></i>物品明细</h6>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm align-middle">
                         <thead class="table-light">
@@ -46,6 +103,7 @@
                                 <th style="width:50px">#</th>
                                 <th>物品名称</th>
                                 <th>规格型号</th>
+                                <th>单位</th>
                                 <th style="width:120px">数量</th>
                             </tr>
                         </thead>
@@ -55,7 +113,8 @@
                                 <td class="text-center">{{ forloop.counter }}</td>
                                 <td>{{ item.supply.name }}</td>
                                 <td>{{ item.supply.specification|default:"-" }}</td>
-                                <td class="text-center">{{ item.quantity }} {{ item.supply.unit }}</td>
+                                <td class="text-center">{{ item.supply.unit }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -74,12 +133,48 @@
 </div>
 
 <style>
+/* ===== 屏幕样式 ===== */
+.detail-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 24px;
+    padding: 16px 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+.detail-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.detail-info-item.full-width {
+    grid-column: 1 / -1;
+}
+.detail-label {
+    font-size: 0.8rem;
+    color: #615d59;
+    font-weight: 500;
+}
+.detail-value {
+    font-size: 0.95rem;
+    color: #1a1f2e;
+    font-weight: 600;
+}
+.section-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1a1f2e;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+/* ===== 打印样式 ===== */
 @page {
     size: A4;
     margin: 15mm 12mm;
 }
 @media print {
-    /* 隐藏所有非内容元素 */
     .sidebar, .navbar, .topbar, .btn, .main-wrapper > .topbar,
     .card-header, .btn-logout, .user-badge, .alert { display: none !important; }
     .main-wrapper { margin-left: 0 !important; }
@@ -94,6 +189,15 @@
     .print-header { display: block !important; text-align: center; margin-bottom: 20px; }
     .print-header h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; letter-spacing: 4px; }
     .print-header .print-meta { font-size: 12px; color: #666; }
+
+    /* 打印时：隐藏详细信息网格，只显示表格和签字 */
+    .detail-info-grid { display: none !important; }
+    .section-title { display: none !important; }
+
+    /* 打印时：恢复表格基础样式 */
+    .table { border-collapse: collapse !important; width: 100% !important; }
+    .table th, .table td { border: 1px solid #333 !important; padding: 6px 8px !important; font-size: 12px; }
+    .table thead th { background: #f0f0f0 !important; }
 }
 
 /* 屏幕上隐藏打印标题 */

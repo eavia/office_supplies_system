@@ -582,7 +582,7 @@
                     </a>
                     <div class="collapse {% if '/stockin' in request.path or '/stockout' in request.path or '/approvals' in request.path or '/statistics' in request.path %}show{% endif %}" id="menu-stock">
                         <div class="submenu">
-                            <a class="nav-link {% if '/stockin/applications' in request.path %}active{% endif %}" href="{% url 'stockin_application_list' %}">入库单查询</a>
+                            <a class="nav-link {% if '/stockin/applications' in request.path %}active{% endif %}" href="{% url 'stockin_application_list' %}">入库记录查询</a>
                             <a class="nav-link {% if '/stockout' in request.path and '/statistics' not in request.path %}active{% endif %}" href="{% url 'stockout_list' %}">出库记录查询</a>
                             <a class="nav-link {% if '/approvals' in request.path %}active{% endif %}" href="{% url 'approval_list' %}">入出库审批</a>
                             <a class="nav-link {% if '/statistics/stockin' in request.path %}active{% endif %}" href="{% url 'stockin_statistics' %}">入库统计</a>
