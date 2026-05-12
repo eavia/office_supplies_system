@@ -2,12 +2,11 @@
 {% block page_title %}出库单详情{% endblock %}
 
 {% block content %}
-<!-- 屏幕显示 -->
-<div class="row justify-content-center no-print">
+<div class="row justify-content-center">
     <div class="col-md-10">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>出库单详情</h4>
+                <h4 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>出库单</h4>
                 <div class="d-flex gap-2">
                     <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-print me-1"></i>打印
@@ -23,132 +22,55 @@
                 </div>
             </div>
             <div class="card-body">
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <table class="table table-sm table-borderless">
-                            <tr><td class="text-muted" style="width:100px">出库单号</td><td><strong>{{ order.record_no }}</strong></td></tr>
-                            <tr><td class="text-muted">领用人</td><td>{{ order.recipient }}</td></tr>
-                            <tr><td class="text-muted">领用部门</td><td>{{ order.department|default:"-" }}</td></tr>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <table class="table table-sm table-borderless">
-                            <tr><td class="text-muted" style="width:100px">出库类型</td>
-                                <td>
-                                    {% if order.out_type == '领用' %}<span class="badge bg-primary">领用</span>
-                                    {% elif order.out_type == '归还' %}<span class="badge bg-success">归还</span>
-                                    {% elif order.out_type == '报废' %}<span class="badge bg-danger">报废</span>
-                                    {% else %}<span class="badge bg-info">调拨</span>{% endif %}
-                                </td>
-                            </tr>
-                            <tr><td class="text-muted">审批状态</td>
-                                <td>
-                                    {% if order.status == '待审批' %}<span class="badge bg-warning text-dark">待审批</span>
-                                    {% elif order.status == '已批准' %}<span class="badge bg-success">已批准</span>
-                                    {% else %}<span class="badge bg-danger">已拒绝</span>{% endif %}
-                                </td>
-                            </tr>
-                            <tr><td class="text-muted">操作员</td><td>{{ order.operator.get_full_name|default:order.operator.username }}</td></tr>
-                            <tr><td class="text-muted">出库时间</td><td>{{ order.created_at|date:"Y-m-d H:i" }}</td></tr>
-                        </table>
-                    </div>
+                <!-- 基本信息（简化） -->
+                <div class="d-flex justify-content-between mb-3">
+                    <span><strong>单号：</strong>{{ order.record_no }}</span>
+                    <span><strong>出库时间：</strong>{{ order.created_at|date:"Y-m-d H:i" }}</span>
                 </div>
 
-                {% if order.approver %}
-                <div class="alert {% if order.status == '已批准' %}alert-success{% elif order.status == '已拒绝' %}alert-danger{% else %}alert-warning{% endif %} mb-4">
-                    <div class="row">
-                        <div class="col-md-4"><strong>审批人：</strong>{{ order.approver.get_full_name|default:order.approver.username }}</div>
-                        <div class="col-md-4"><strong>审批时间：</strong>{{ order.approval_time|date:"Y-m-d H:i" }}</div>
-                        <div class="col-md-4"><strong>审批意见：</strong>{{ order.approval_comment|default:"-" }}</div>
-                    </div>
-                </div>
-                {% endif %}
-
-                {% if order.purpose %}
-                <div class="mb-3"><strong class="text-muted">用途说明：</strong><p class="mb-0">{{ order.purpose }}</p></div>
-                {% endif %}
-
-                <hr>
-                <h5><i class="fas fa-list me-2"></i>出库物品明细（共 {{ order.items.count }} 项）</h5>
-                <div class="table-responsive mt-3">
+                <!-- 物品明细 -->
+                <div class="table-responsive">
                     <table class="table table-bordered table-sm align-middle">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:50px">#</th>
-                                <th>物品编码</th>
                                 <th>物品名称</th>
                                 <th>规格型号</th>
-                                <th style="width:120px">出库数量</th>
-                                <th style="width:120px">剩余库存</th>
+                                <th style="width:120px">数量</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for item in order.items.all %}
                             <tr>
-                                <td class="text-center text-muted">{{ forloop.counter }}</td>
-                                <td>{{ item.supply.code }}</td>
+                                <td class="text-center">{{ forloop.counter }}</td>
                                 <td>{{ item.supply.name }}</td>
-                                <td class="text-muted">{{ item.supply.specification|default:"-" }}</td>
+                                <td>{{ item.supply.specification|default:"-" }}</td>
                                 <td class="text-center">{{ item.quantity }} {{ item.supply.unit }}</td>
-                                <td class="text-center {% if item.supply.quantity <= 0 %}text-danger fw-bold{% endif %}">{{ item.supply.quantity }} {{ item.supply.unit }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+
+                <!-- 签字栏 -->
+                <div class="signature-area">
+                    <div class="sig-item"><span class="sig-label">部门负责人：</span><span class="sig-line"></span></div>
+                    <div class="sig-item"><span class="sig-label">保管人：</span><span class="sig-line"></span></div>
+                    <div class="sig-item"><span class="sig-label">签收人：</span><span class="sig-line"></span></div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 打印专用（简化版） -->
-<div class="print-only">
-    <div class="print-title">出库单</div>
-    <div class="print-info">
-        <span>单号：{{ order.record_no }}</span>
-        <span>出库时间：{{ order.created_at|date:"Y-m-d H:i" }}</span>
-    </div>
-    <table class="print-table">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>物品名称</th>
-                <th>规格型号</th>
-                <th>数量</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in order.items.all %}
-            <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ item.supply.name }}</td>
-                <td>{{ item.supply.specification|default:"-" }}</td>
-                <td>{{ item.quantity }} {{ item.supply.unit }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <div class="print-signature">
-        <div class="sig-item"><span class="sig-label">部门负责人：</span><span class="sig-line"></span></div>
-        <div class="sig-item"><span class="sig-label">保管人：</span><span class="sig-line"></span></div>
-        <div class="sig-item"><span class="sig-label">签收人：</span><span class="sig-line"></span></div>
-    </div>
-</div>
-
 <style>
 @media print {
-    .no-print, .sidebar, .navbar, .btn { display: none !important; }
+    .sidebar, .navbar, .btn { display: none !important; }
     .main-content { margin-left: 0 !important; padding: 0 !important; }
     body { margin: 0; padding: 0; }
-    .print-only { display: block !important; }
+    .card { border: none !important; box-shadow: none !important; }
 }
-.print-only { display: none; }
-.print-title { text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 15px; }
-.print-info { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; }
-.print-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-.print-table th, .print-table td { border: 1px solid #333; padding: 6px 10px; font-size: 13px; }
-.print-table th { background: #f5f5f5; text-align: center; }
-.print-signature { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 10px; }
+.signature-area { display: flex; justify-content: space-between; margin-top: 60px; }
 .sig-item { font-size: 14px; }
 .sig-label { font-weight: 600; }
 .sig-line { display: inline-block; min-width: 120px; border-bottom: 1px solid #333; }
