@@ -88,6 +88,7 @@ def home(request):
     supply_count = OfficeSupply.objects.count()
     low_stock_count = OfficeSupply.objects.filter(status='低库存').count()
     pending_count = StockInApplication.objects.filter(status='待审批').count()
+    pending_stockout_count = StockOutOrder.objects.filter(status='待审批').count()
     device_count = ITDevice.objects.count()
     
     # 最近入库申请
@@ -100,6 +101,7 @@ def home(request):
         'supply_count': supply_count,
         'low_stock_count': low_stock_count,
         'pending_count': pending_count,
+        'pending_stockout_count': pending_stockout_count,
         'device_count': device_count,
         'recent_applications': recent_applications,
         'recent_outs': recent_outs,
@@ -543,21 +545,42 @@ def stockin_application_detail(request, pk):
 # ==================== 审批管理 ====================
 @login_required
 def approval_list(request):
-    """入出库审批（支持多物品）"""
+    """入出库审批（入库+出库合并列表）"""
     status_filter = request.GET.get('status', '待审批')
+    type_filter = request.GET.get('type', '')
 
-    applications = StockInApplication.objects.prefetch_related('items__supply').select_related('applicant').all()
-
+    # 入库申请
+    stockin_qs = StockInApplication.objects.prefetch_related('items__supply').select_related('applicant', 'department').all()
     if status_filter:
-        applications = applications.filter(status=status_filter)
+        stockin_qs = stockin_qs.filter(status=status_filter)
+    stockin_list = [{'obj': a, 'type': '入库', 'no': a.application_no, 'summary': a.get_items_summary(),
+                     'amount': a.get_total_amount(), 'applicant': a.applicant.username,
+                     'department': str(a.department) if a.department else '-', 'status': a.status,
+                     'created_at': a.created_at, 'pk': a.pk} for a in stockin_qs]
 
-    paginator = Paginator(applications, 20)
+    # 出库单
+    stockout_qs = StockOutOrder.objects.prefetch_related('items__supply').select_related('operator', 'department').all()
+    if status_filter:
+        stockout_qs = stockout_qs.filter(status=status_filter)
+    stockout_list = [{'obj': o, 'type': '出库', 'no': o.record_no, 'summary': o.get_items_summary(),
+                      'amount': None, 'applicant': o.operator.username,
+                      'department': str(o.department) if o.department else '-', 'status': o.status,
+                      'created_at': o.created_at, 'pk': o.pk} for o in stockout_qs]
+
+    # 合并并按创建时间倒序
+    combined = stockin_list + stockout_list
+    if type_filter:
+        combined = [r for r in combined if r['type'] == type_filter]
+    combined.sort(key=lambda x: x['created_at'], reverse=True)
+
+    paginator = Paginator(combined, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
     return render(request, 'inventory/approval_list.html', {
         'page_obj': page_obj,
         'status_filter': status_filter,
+        'type_filter': type_filter,
     })
 
 
@@ -591,12 +614,59 @@ def approval_process(request, pk):
     return render(request, 'inventory/approval_process.html', {'application': application})
 
 
+@login_required
+def approval_process_stockout(request, pk):
+    """审批处理（出库单）"""
+    order = get_object_or_404(
+        StockOutOrder.objects.select_related('department', 'operator').prefetch_related('items__supply'),
+        pk=pk
+    )
+    if order.status != '待审批':
+        messages.error(request, '该出库单已审批，不能重复操作！')
+        return redirect('approval_list')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        comment = request.POST.get('approval_comment', '')
+
+        if action == 'approve':
+            # 校验库存
+            errors = []
+            for item in order.items.select_related('supply').all():
+                if item.quantity > item.supply.quantity:
+                    errors.append(f'{item.supply.name} 库存不足！当前库存：{item.supply.quantity}，需要：{item.quantity}')
+            if errors:
+                for err in errors:
+                    messages.error(request, err)
+                return render(request, 'inventory/approval_process_stockout.html', {'order': order})
+
+            # 批准后扣减库存
+            for item in order.items.select_related('supply').all():
+                item.supply.quantity -= item.quantity
+                item.supply.save()
+            order.status = '已批准'
+            messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库！')
+        elif action == 'reject':
+            order.status = '已拒绝'
+            messages.info(request, f'出库单 "{order.record_no}" 已拒绝。')
+
+        order.approver = request.user
+        order.approval_time = timezone.now()
+        order.approval_comment = comment
+        order.save()
+
+        return redirect('approval_list')
+
+    return render(request, 'inventory/approval_process_stockout.html', {'order': order})
+
+
 # ==================== 出库管理 ====================
 @login_required
 def stockout_list(request):
     """出库记录查询"""
     query = request.GET.get('q', '')
     out_type = request.GET.get('out_type', '')
+    status_filter = request.GET.get('status', '')
 
     records = StockOutOrder.objects.prefetch_related('items__supply').all()
 
@@ -606,6 +676,8 @@ def stockout_list(request):
         )
     if out_type:
         records = records.filter(out_type=out_type)
+    if status_filter:
+        records = records.filter(status=status_filter)
 
     paginator = Paginator(records, 20)
     page_number = request.GET.get('page')
@@ -615,6 +687,7 @@ def stockout_list(request):
         'page_obj': page_obj,
         'query': query,
         'out_type_filter': out_type,
+        'status_filter': status_filter,
     })
 
 
@@ -698,20 +771,19 @@ def stockout_create(request):
                 merged[sid] = merged.get(sid, 0) + qty
             items_data = [{'supply_id': sid, 'quantity': qty} for sid, qty in merged.items()]
 
-            # 创建出库单
+            # 创建出库单（待审批状态，暂不扣减库存）
             order = form.save(commit=False)
             order.operator = request.user
+            order.status = '待审批'
             order.save()
 
-            # 创建明细并扣减库存
+            # 创建明细（不扣减库存，审批通过后再扣减）
             for item in items_data:
                 supply = OfficeSupply.objects.get(pk=item['supply_id'])
                 qty = int(item['quantity'])
                 StockOutItem.objects.create(order=order, supply=supply, quantity=qty)
-                supply.quantity -= qty
-                supply.save()
 
-            messages.success(request, f'出库单 "{order.record_no}" 登记成功，共 {len(items_data)} 项物品！')
+            messages.success(request, f'出库单 "{order.record_no}" 已提交，等待审批！')
             return redirect('stockout_list')
         else:
             if not items_data:
@@ -739,6 +811,109 @@ def stockout_detail(request, pk):
     return render(request, 'inventory/stockout_detail.html', {
         'order': order,
     })
+
+
+@login_required
+def stockout_edit(request, pk):
+    """出库单编辑（仅待审批状态可编辑）"""
+    order = get_object_or_404(StockOutOrder, pk=pk)
+    if order.status != '待审批':
+        messages.error(request, '只有待审批的出库单才能修改！')
+        return redirect('stockout_list')
+
+    import json
+
+    if request.method == 'POST':
+        form = StockOutForm(request.POST, instance=order)
+        items_json = request.POST.get('items_json', '[]')
+        try:
+            items_data = json.loads(items_json)
+        except (json.JSONDecodeError, TypeError):
+            items_data = []
+
+        if form.is_valid() and items_data:
+            # 校验物品
+            errors = []
+            for item in items_data:
+                supply_id = item.get('supply_id')
+                qty = int(item.get('quantity', 0))
+                try:
+                    supply = OfficeSupply.objects.select_related('item_category').get(pk=supply_id)
+                except OfficeSupply.DoesNotExist:
+                    errors.append(f'物品 ID {supply_id} 不存在')
+                    continue
+                is_supply_disabled = ('停用' in (supply.status or '')) or (
+                    supply.item_category is not None and not supply.item_category.is_active
+                )
+                if is_supply_disabled:
+                    errors.append(f'{supply.code} - {supply.name} 已停用，禁止出库')
+                elif qty <= 0:
+                    errors.append(f'{supply.name}：出库数量必须大于 0')
+
+            if errors:
+                for err in errors:
+                    messages.error(request, err)
+                return render(request, 'inventory/stockout_form.html', {
+                    'form': form, 'title': '修改出库单',
+                    'restored_items_json': '[]',
+                    'error_indices_json': '[]',
+                })
+
+            form.save()
+            # 重建明细
+            order.items.all().delete()
+            merged = {}
+            for item in items_data:
+                sid = str(item['supply_id'])
+                qty = int(item['quantity'])
+                merged[sid] = merged.get(sid, 0) + qty
+            for sid, qty in merged.items():
+                supply = OfficeSupply.objects.get(pk=sid)
+                StockOutItem.objects.create(order=order, supply=supply, quantity=qty)
+
+            messages.success(request, f'出库单 "{order.record_no}" 更新成功！')
+            return redirect('stockout_list')
+        else:
+            if not items_data:
+                messages.error(request, '请至少添加一项出库物品')
+    else:
+        form = StockOutForm(instance=order)
+
+    # 预填充已有明细
+    existing_items = []
+    for item in order.items.select_related('supply').all():
+        existing_items.append({
+            'supply_id': item.supply.pk,
+            'name': str(item.supply),
+            'specification': item.supply.specification or '',
+            'quantity': item.quantity,
+            'stock': item.supply.quantity,
+            'unit': item.supply.unit or '',
+        })
+
+    return render(request, 'inventory/stockout_form.html', {
+        'form': form,
+        'title': '修改出库单',
+        'restored_items_json': json.dumps(existing_items, ensure_ascii=False),
+        'error_indices_json': '[]',
+    })
+
+
+@login_required
+def stockout_delete(request, pk):
+    """出库单删除（仅待审批状态可删除）"""
+    order = get_object_or_404(StockOutOrder, pk=pk)
+    if order.status != '待审批':
+        messages.error(request, '只有待审批的出库单才能删除！')
+        return redirect('stockout_list')
+
+    if request.method == 'POST':
+        record_no = order.record_no
+        order.delete()
+        messages.success(request, f'出库单 "{record_no}" 已删除！')
+        return redirect('stockout_list')
+    return render(request, 'inventory/stockout_confirm_delete.html', {'order': order})
+
 
 
 @login_required

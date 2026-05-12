@@ -250,6 +250,9 @@ class StockInApplication(models.Model):
     applicant = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stockin_applications', verbose_name='申请人')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='申请部门')
     reason = models.TextField('申请原因', blank=True)
+    stockin_date = models.DateField('入库日期', null=False, blank=False, default=timezone.now)  # 必填字段，默认为当前日期
+    counterpart_doc_no = models.CharField('对方单据编号', max_length=100, blank=True)  # 可选字段
+    invoice_no = models.CharField('发票编号', max_length=100, blank=True)  # 可选字段
     status = models.CharField('审批状态', max_length=20, default='待审批',
                               choices=[('待审批', '待审批'), ('已批准', '已批准'), ('已拒绝', '已拒绝')])
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stockin_approvals', verbose_name='审批人')
@@ -318,6 +321,11 @@ class StockOutOrder(models.Model):
     operator = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='操作员')
     out_type = models.CharField('出库类型', max_length=20, default='领用',
                                 choices=[('领用', '领用'), ('归还', '归还'), ('报废', '报废'), ('调拨', '调拨')])
+    status = models.CharField('审批状态', max_length=20, default='待审批',
+                              choices=[('待审批', '待审批'), ('已批准', '已批准'), ('已拒绝', '已拒绝')])
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stockout_approvals', verbose_name='审批人')
+    approval_time = models.DateTimeField('审批时间', null=True, blank=True)
+    approval_comment = models.TextField('审批意见', blank=True)
     created_at = models.DateTimeField('出库时间', auto_now_add=True)
 
     class Meta:
@@ -327,6 +335,15 @@ class StockOutOrder(models.Model):
 
     def __str__(self):
         return self.record_no
+
+    def get_items_summary(self):
+        """获取物品摘要，用于列表显示"""
+        items = list(self.items.select_related('supply').all())
+        if not items:
+            return '-'
+        if len(items) == 1:
+            return f"{items[0].supply.name} × {items[0].quantity}"
+        return f"{items[0].supply.name} 等 {len(items)} 项"
 
     def save(self, *args, **kwargs):
         if not self.created_at:

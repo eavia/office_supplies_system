@@ -51,17 +51,21 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="stat-label">待审批申请</div>
-                        <div class="stat-value">{{ pending_count }}</div>
+                        <div class="stat-label">待审批</div>
+                        <div class="stat-value">{{ pending_count }} / {{ pending_stockout_count }}</div>
+                        <small class="text-muted">入库 / 出库</small>
                     </div>
                     <div class="stat-icon">
                         <i class="fas fa-clock"></i>
                     </div>
                 </div>
             </div>
-            <div class="card-footer">
+            <div class="card-footer d-flex gap-2">
                 <a href="{% url 'approval_list' %}" class="text-decoration-none" style="color:#4299e1;">
-                    去审批 <i class="fas fa-arrow-right ms-1"></i>
+                    入库审批 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+                <a href="{% url 'stockout_list' %}?status=待审批" class="text-decoration-none" style="color:#4299e1;">
+                    出库审批 <i class="fas fa-arrow-right ms-1"></i>
                 </a>
             </div>
         </div>

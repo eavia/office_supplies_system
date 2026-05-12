@@ -75,10 +75,13 @@ class StockInApplicationForm(forms.ModelForm):
     """入库申请表单（多物品，只选已有）"""
     class Meta:
         model = StockInApplication
-        fields = ['department', 'reason']
+        fields = ['department', 'reason', 'stockin_date', 'counterpart_doc_no', 'invoice_no']
         widgets = {
             'department': forms.Select(attrs={'class': 'form-select'}),
             'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '申请原因'}),
+            'stockin_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'counterpart_doc_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '对方单据编号（可选）'}),
+            'invoice_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '发票编号（可选）'}),
         }
 
     def __init__(self, *args, **kwargs):

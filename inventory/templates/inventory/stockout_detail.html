@@ -7,9 +7,19 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>出库单详情</h4>
-                <a href="{% url 'stockout_list' %}" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-arrow-left me-1"></i>返回列表
-                </a>
+                <div class="d-flex gap-2">
+                    {% if order.status == '待审批' %}
+                    <a href="{% url 'stockout_edit' order.pk %}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-edit me-1"></i>编辑
+                    </a>
+                    <a href="{% url 'approval_process_stockout' order.pk %}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-check me-1"></i>审批
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'stockout_list' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i>返回列表
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <!-- 基本信息 -->
@@ -36,11 +46,39 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            <tr><td class="text-muted">审批状态</td>
+                                <td>
+                                    {% if order.status == '待审批' %}
+                                    <span class="badge bg-warning text-dark">待审批</span>
+                                    {% elif order.status == '已批准' %}
+                                    <span class="badge bg-success">已批准</span>
+                                    {% elif order.status == '已拒绝' %}
+                                    <span class="badge bg-danger">已拒绝</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
                             <tr><td class="text-muted">操作员</td><td>{{ order.operator.get_full_name|default:order.operator.username }}</td></tr>
                             <tr><td class="text-muted">出库时间</td><td>{{ order.created_at|date:"Y-m-d H:i" }}</td></tr>
                         </table>
                     </div>
                 </div>
+
+                <!-- 审批信息 -->
+                {% if order.approver %}
+                <div class="alert {% if order.status == '已批准' %}alert-success{% elif order.status == '已拒绝' %}alert-danger{% else %}alert-warning{% endif %} mb-4">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>审批人：</strong>{{ order.approver.get_full_name|default:order.approver.username }}
+                        </div>
+                        <div class="col-md-4">
+                            <strong>审批时间：</strong>{{ order.approval_time|date:"Y-m-d H:i" }}
+                        </div>
+                        <div class="col-md-4">
+                            <strong>审批意见：</strong>{{ order.approval_comment|default:"-" }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 {% if order.purpose %}
                 <div class="mb-3">

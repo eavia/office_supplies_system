@@ -26,11 +26,14 @@ urlpatterns = [
     # 审批管理
     path('approvals/', views.approval_list, name='approval_list'),
     path('approvals/<int:pk>/process/', views.approval_process, name='approval_process'),
+    path('approvals/stockout/<int:pk>/process/', views.approval_process_stockout, name='approval_process_stockout'),
     
     # 出库管理
     path('stockout/', views.stockout_list, name='stockout_list'),
     path('stockout/create/', views.stockout_create, name='stockout_create'),
     path('stockout/<int:pk>/detail/', views.stockout_detail, name='stockout_detail'),
+    path('stockout/<int:pk>/edit/', views.stockout_edit, name='stockout_edit'),
+    path('stockout/<int:pk>/delete/', views.stockout_delete, name='stockout_delete'),
     
     # 归还申请
     path('returns/', views.return_application_list, name='return_list'),

@@ -1,76 +1,88 @@
 {% extends 'inventory/base.html' %}
-{% block page_title %}审批处理{% endblock %}
+{% block page_title %}出库审批{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h4 class="mb-0"><i class="fas fa-clipboard-check me-2" style="color:#0075de;"></i>审批入库申请</h4>
+                <h4 class="mb-0"><i class="fas fa-clipboard-check me-2" style="color:#0075de;"></i>审批出库单</h4>
             </div>
             <div class="card-body">
                 <div class="row mb-3">
                     <div class="col-md-6">
-                        <label class="form-label text-muted">申请单号</label>
-                        <p class="mb-0 fw-bold">{{ application.application_no }}</p>
+                        <label class="form-label text-muted">出库单号</label>
+                        <p class="mb-0 fw-bold">{{ order.record_no }}</p>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label text-muted">申请时间</label>
-                        <p class="mb-0">{{ application.created_at|date:"Y-m-d H:i" }}</p>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label text-muted">申请人</label>
-                        <p class="mb-0">{{ application.applicant.username }}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label text-muted">部门</label>
-                        <p class="mb-0">{{ application.department }}</p>
+                        <label class="form-label text-muted">创建时间</label>
+                        <p class="mb-0">{{ order.created_at|date:"Y-m-d H:i" }}</p>
                     </div>
                 </div>
                 <div class="row mb-3">
                     <div class="col-md-4">
-                        <label class="form-label text-muted">入库日期</label>
-                        <p class="mb-0">{{ application.stockin_date|date:"Y-m-d" }}</p>
+                        <label class="form-label text-muted">领用人</label>
+                        <p class="mb-0">{{ order.recipient }}</p>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label text-muted">对方单据编号</label>
-                        <p class="mb-0">{{ application.counterpart_doc_no|default:"-" }}</p>
+                        <label class="form-label text-muted">领用部门</label>
+                        <p class="mb-0">{{ order.department|default:"-" }}</p>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label text-muted">发票编号</label>
-                        <p class="mb-0">{{ application.invoice_no|default:"-" }}</p>
+                        <label class="form-label text-muted">出库类型</label>
+                        <p class="mb-0">
+                            {% if order.out_type == '领用' %}
+                            <span class="badge bg-primary">领用</span>
+                            {% elif order.out_type == '归还' %}
+                            <span class="badge bg-success">归还</span>
+                            {% elif order.out_type == '报废' %}
+                            <span class="badge bg-danger">报废</span>
+                            {% else %}
+                            <span class="badge bg-info">调拨</span>
+                            {% endif %}
+                        </p>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">申请原因</label>
-                    <p class="mb-0">{{ application.reason|default:"-" }}</p>
+                    <label class="form-label text-muted">操作员</label>
+                    <p class="mb-0">{{ order.operator.get_full_name|default:order.operator.username }}</p>
                 </div>
+
+                {% if order.purpose %}
+                <div class="mb-3">
+                    <label class="form-label text-muted">用途说明</label>
+                    <p class="mb-0">{{ order.purpose }}</p>
+                </div>
+                {% endif %}
 
                 <hr>
 
                 <div class="mb-3">
-                    <label class="form-label text-muted">入库物品明细</label>
+                    <label class="form-label text-muted">出库物品明细</label>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered">
                             <thead class="table-light">
                                 <tr>
                                     <th>物品编码</th>
                                     <th>物品名称</th>
-                                    <th>申请数量</th>
-                                    <th>单价</th>
-                                    <th>小计</th>
+                                    <th>规格型号</th>
+                                    <th>出库数量</th>
+                                    <th>当前库存</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for item in application.items.all %}
+                                {% for item in order.items.all %}
                                 <tr>
                                     <td>{{ item.supply.code }}</td>
                                     <td>{{ item.supply.name }}</td>
+                                    <td>{{ item.supply.specification|default:"-" }}</td>
                                     <td>{{ item.quantity }} {{ item.supply.unit }}</td>
-                                    <td class="text-end">¥{{ item.unit_price|floatformat:2 }}</td>
-                                    <td class="text-end fw-bold">¥{{ item.subtotal|floatformat:2 }}</td>
+                                    <td class="{% if item.supply.quantity < item.quantity %}text-danger fw-bold{% endif %}">
+                                        {{ item.supply.quantity }} {{ item.supply.unit }}
+                                        {% if item.supply.quantity < item.quantity %}
+                                        <br><small class="text-danger">库存不足！</small>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
@@ -78,12 +90,6 @@
                                 </tr>
                                 {% endfor %}
                             </tbody>
-                            <tfoot>
-                                <tr class="table-active fw-bold">
-                                    <td colspan="4" class="text-end">合计金额：</td>
-                                    <td class="text-end">¥{{ application.get_total_amount|floatformat:2 }}</td>
-                                </tr>
-                            </tfoot>
                         </table>
                     </div>
                 </div>
