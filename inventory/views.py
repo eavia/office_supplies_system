@@ -8,9 +8,16 @@ from django.http import JsonResponse
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from .models import OfficeSupply, StockInApplication, StockInItem, StockOutRecord, StockOutOrder, StockOutItem, ITDevice, ComputerType, ReturnApplication, ItemCategory, Department
+from .models import (OfficeSupply, StockInApplication, StockInItem, StockOutRecord, 
+                    StockOutOrder, StockOutItem, ITDevice, ComputerType, ReturnApplication, 
+                    ItemCategory, Department, Profile, ROLE_CHOICES, ROLE_GROUP_MAP)
 from .forms import (OfficeSupplyForm, StockInApplicationForm, StockInApprovalForm,
-                    StockOutForm, ReturnApplicationForm, ComputerTypeForm, ITDeviceForm, ExcelImportForm, ItemCategoryForm, DepartmentForm)
+                    StockOutForm, ReturnApplicationForm, ComputerTypeForm, ITDeviceForm, 
+                    ExcelImportForm, ItemCategoryForm, DepartmentForm,
+                    RegisterForm, UserEditForm, PasswordResetForm, ProfileForm)
+from .decorators import role_required
+from .utils import (get_user_role, get_visible_queryset, check_dept_head_exists, 
+                    check_pending_before_role_change)
 
 from django.http import HttpResponse
 from openpyxl import Workbook, load_workbook
@@ -92,18 +99,22 @@ def department_delete(request, pk):
 @login_required
 def home(request):
     """系统首页"""
-    # 统计数据
+    role = get_user_role(request.user)
+    
+    # 统计数据（按角色过滤）
     supply_count = OfficeSupply.objects.count()
     low_stock_count = OfficeSupply.objects.filter(status='低库存').count()
-    pending_count = StockInApplication.objects.filter(status='待审批').count()
-    pending_stockout_count = StockOutOrder.objects.filter(status='待审批').count()
-    device_count = ITDevice.objects.count()
+    visible_stockin = get_visible_queryset(request.user, StockInApplication)
+    visible_stockout = get_visible_queryset(request.user, StockOutOrder)
+    pending_count = visible_stockin.filter(status='待审批').count()
+    pending_stockout_count = visible_stockout.filter(status='待审批').count()
+    device_count = get_visible_queryset(request.user, ITDevice).count()
     
     # 最近入库单
-    recent_applications = StockInApplication.objects.select_related('applicant', 'department').prefetch_related('items__supply').order_by('-created_at')[:5]
+    recent_applications = visible_stockin.select_related('applicant', 'department').prefetch_related('items__supply').order_by('-created_at')[:5]
     
     # 最近出库记录
-    recent_outs = StockOutOrder.objects.prefetch_related('items__supply').order_by('-created_at')[:5]
+    recent_outs = visible_stockout.prefetch_related('items__supply').order_by('-created_at')[:5]
     
     context = {
         'supply_count': supply_count,
@@ -346,7 +357,7 @@ def stockin_application_list(request):
     query = request.GET.get('q', '')
     status = request.GET.get('status', '')
 
-    applications = StockInApplication.objects.prefetch_related('items__supply').select_related('applicant').all()
+    applications = get_visible_queryset(request.user, StockInApplication).prefetch_related('items__supply').select_related('applicant')
 
     if query:
         applications = applications.filter(
@@ -636,48 +647,86 @@ def approval_process(request, pk):
 
 @login_required
 def approval_process_stockout(request, pk):
-    """审批处理（出库单）"""
+    """二级审批处理（出库单）"""
     order = get_object_or_404(
         StockOutOrder.objects.select_related('department', 'operator').prefetch_related('items__supply'),
         pk=pk
     )
-    if order.status != '待审批':
-        messages.error(request, '该出库单已审批，不能重复操作！')
-        return redirect('approval_list')
+    role = get_user_role(request.user)
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        comment = request.POST.get('approval_comment', '')
+        comment = request.POST.get('comment', '')
 
-        if action == 'approve':
+        # 部门长一级审批
+        if action == 'dept_approve':
+            if order.status != '待审批':
+                messages.error(request, '该出库单状态不符，无法审批')
+                return redirect('stockout_detail', pk=order.pk)
+            if role not in ('admin', 'dept_head'):
+                messages.error(request, '您没有部门长审批权限')
+                return redirect('stockout_detail', pk=order.pk)
+            order.status = '待仓管审批'
+            order.dept_approver = request.user
+            order.dept_approval_time = timezone.now()
+            order.dept_approval_comment = comment
+            order.save()
+            messages.success(request, f'出库单 "{order.record_no}" 部门长已通过，待仓管审批')
+
+        elif action == 'dept_reject':
+            if order.status != '待审批':
+                messages.error(request, '该出库单状态不符')
+                return redirect('stockout_detail', pk=order.pk)
+            order.status = '已拒绝'
+            order.dept_approver = request.user
+            order.dept_approval_time = timezone.now()
+            order.dept_approval_comment = comment
+            order.save()
+            messages.info(request, f'出库单 "{order.record_no}" 已被部门长驳回')
+
+        # 仓管二级审批
+        elif action == 'wh_approve':
+            if order.status != '待仓管审批':
+                messages.error(request, '该出库单状态不符，无法审批')
+                return redirect('stockout_detail', pk=order.pk)
+            if role not in ('admin', 'warehouse'):
+                messages.error(request, '您没有仓管审批权限')
+                return redirect('stockout_detail', pk=order.pk)
             # 校验库存
             errors = []
             for item in order.items.select_related('supply').all():
                 if item.quantity > item.supply.quantity:
-                    errors.append(f'{item.supply.name} 库存不足！当前库存：{item.supply.quantity}，需要：{item.quantity}')
+                    errors.append(f'{item.supply.name} 库存不足！库存：{item.supply.quantity}，需要：{item.quantity}')
             if errors:
                 for err in errors:
                     messages.error(request, err)
-                return render(request, 'inventory/approval_process_stockout.html', {'order': order})
+                return redirect('stockout_detail', pk=order.pk)
 
-            # 批准后扣减库存
+            # 扣减库存
             for item in order.items.select_related('supply').all():
                 item.supply.quantity -= item.quantity
                 item.supply.save()
             order.status = '已批准'
+            order.approver = request.user
+            order.approval_time = timezone.now()
+            order.approval_comment = comment
+            order.save()
             messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库！')
-        elif action == 'reject':
+
+        elif action == 'wh_reject':
+            if order.status != '待仓管审批':
+                messages.error(request, '该出库单状态不符')
+                return redirect('stockout_detail', pk=order.pk)
             order.status = '已拒绝'
-            messages.info(request, f'出库单 "{order.record_no}" 已拒绝。')
+            order.approver = request.user
+            order.approval_time = timezone.now()
+            order.approval_comment = comment
+            order.save()
+            messages.info(request, f'出库单 "{order.record_no}" 已被仓管驳回')
 
-        order.approver = request.user
-        order.approval_time = timezone.now()
-        order.approval_comment = comment
-        order.save()
+        return redirect('stockout_detail', pk=order.pk)
 
-        return redirect('approval_list')
-
-    return render(request, 'inventory/approval_process_stockout.html', {'order': order})
+    return redirect('stockout_detail', pk=order.pk)
 
 
 # ==================== 出库管理 ====================
@@ -688,7 +737,7 @@ def stockout_list(request):
     out_type = request.GET.get('out_type', '')
     status_filter = request.GET.get('status', '')
 
-    records = StockOutOrder.objects.prefetch_related('items__supply').all()
+    records = get_visible_queryset(request.user, StockOutOrder).prefetch_related('items__supply').all()
 
     if query:
         records = records.filter(
@@ -834,8 +883,13 @@ def stockout_detail(request, pk):
         StockOutOrder.objects.select_related('department', 'operator').prefetch_related('items__supply'),
         pk=pk
     )
+    role = get_user_role(request.user)
+    can_dept_approve = role in ('admin', 'dept_head') and order.status == '待审批'
+    can_warehouse_approve = role in ('admin', 'warehouse') and order.status == '待仓管审批'
     return render(request, 'inventory/stockout_detail.html', {
         'order': order,
+        'can_dept_approve': can_dept_approve,
+        'can_warehouse_approve': can_warehouse_approve,
     })
 
 
@@ -843,8 +897,8 @@ def stockout_detail(request, pk):
 def stockout_edit(request, pk):
     """出库单编辑（仅待审批状态可编辑）"""
     order = get_object_or_404(StockOutOrder, pk=pk)
-    if order.status != '待审批':
-        messages.error(request, '只有待审批的出库单才能修改！')
+    if order.status not in ('待审批', '待仓管审批'):
+        messages.error(request, '只有待审批或待仓管审批的出库单才能修改！')
         return redirect('stockout_list')
 
     import json
@@ -1853,3 +1907,416 @@ def supply_detail(request, pk):
         'records': records,
         'has_stock': False,  # 已移除库存限制
     })
+
+
+# ========== 注册 ==========
+
+def register_view(request):
+    """用户注册"""
+    if request.user.is_authenticated:
+        return redirect('home')
+    
+    if request.method == 'POST':
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            from django.contrib.auth.models import User, Group
+            user = User.objects.create_user(
+                username=form.cleaned_data['username'],
+                password=form.cleaned_data['password'],
+                is_active=False,  # 待审核
+            )
+            profile = user.profile
+            profile.name = form.cleaned_data['name']
+            profile.phone = form.cleaned_data.get('phone', '')
+            profile.department = form.cleaned_data['department']
+            profile.applied_role = form.cleaned_data['applied_role']
+            profile.is_pending = True
+            profile.save()
+            
+            messages.success(request, '注册成功！请等待管理员审核通过后即可登录。')
+            return redirect('login')
+    else:
+        form = RegisterForm()
+    
+    return render(request, 'inventory/register.html', {'form': form})
+
+
+# ========== API ==========
+
+def api_dept_head_check(request):
+    """检查部门是否已有部门长"""
+    dept_id = request.GET.get('dept_id')
+    if not dept_id:
+        return JsonResponse({'exists': False})
+    
+    try:
+        dept = Department.objects.get(pk=dept_id)
+    except Department.DoesNotExist:
+        return JsonResponse({'exists': False})
+    
+    existing = check_dept_head_exists(dept)
+    if existing:
+        profile = getattr(existing, 'profile', None)
+        name = profile.name if profile and profile.name else existing.username
+        return JsonResponse({'exists': True, 'name': name, 'username': existing.username})
+    return JsonResponse({'exists': False})
+
+
+# ========== 用户管理 ==========
+
+@role_required('admin')
+def user_list(request):
+    """用户列表"""
+    from django.contrib.auth.models import User
+    users = User.objects.select_related('profile', 'profile__department').all().order_by('-is_active', 'username')
+    
+    # 搜索
+    q = request.GET.get('q', '')
+    if q:
+        users = users.filter(
+            Q(username__icontains=q) |
+            Q(profile__name__icontains=q) |
+            Q(profile__phone__icontains=q)
+        )
+    
+    # 角色筛选
+    role_filter = request.GET.get('role', '')
+    if role_filter:
+        users = users.filter(groups__name=ROLE_GROUP_MAP.get(role_filter, ''))
+    
+    paginator = Paginator(users, 20)
+    page = request.GET.get('page')
+    users_page = paginator.get_page(page)
+    
+    return render(request, 'inventory/user_list.html', {
+        'users': users_page,
+        'q': q,
+        'role_filter': role_filter,
+        'role_choices': ROLE_CHOICES,
+    })
+
+
+@role_required('admin')
+def user_create(request):
+    """管理员创建用户"""
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '').strip()
+        name = request.POST.get('name', '').strip()
+        phone = request.POST.get('phone', '').strip()
+        dept_id = request.POST.get('department', '')
+        role = request.POST.get('role', 'staff')
+        
+        from django.contrib.auth.models import User, Group
+        
+        if User.objects.filter(username=username).exists():
+            messages.error(request, f'用户名 {username} 已存在')
+            return redirect('user_create')
+        
+        user = User.objects.create_user(username=username, password=password)
+        profile = user.profile
+        profile.name = name
+        profile.phone = phone
+        if dept_id:
+            try:
+                profile.department = Department.objects.get(pk=dept_id)
+            except Department.DoesNotExist:
+                pass
+        profile.applied_role = role
+        profile.save()
+        
+        # 分配角色组
+        group_name = ROLE_GROUP_MAP.get(role, '普通用户')
+        group = Group.objects.get_or_create(name=group_name)[0]
+        user.groups.set([group])
+        
+        messages.success(request, f'用户 {username} 创建成功')
+        return redirect('user_list')
+    
+    departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+    return render(request, 'inventory/user_form.html', {
+        'departments': departments,
+        'role_choices': ROLE_CHOICES,
+        'action': '创建',
+    })
+
+
+@role_required('admin')
+def user_edit(request, pk):
+    """编辑用户"""
+    from django.contrib.auth.models import User, Group
+    user = get_object_or_404(User, pk=pk)
+    profile = user.profile
+    
+    if request.method == 'POST':
+        profile.name = request.POST.get('name', '').strip()
+        profile.phone = request.POST.get('phone', '').strip()
+        dept_id = request.POST.get('department', '')
+        profile.department = Department.objects.get(pk=dept_id) if dept_id else None
+        profile.save()
+        
+        user.is_active = 'is_active' in request.POST
+        user.save()
+        
+        messages.success(request, f'用户 {user.username} 信息已更新')
+        return redirect('user_list')
+    
+    departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+    return render(request, 'inventory/user_form.html', {
+        'edit_user': user,
+        'profile': profile,
+        'departments': departments,
+        'role_choices': ROLE_CHOICES,
+        'action': '编辑',
+    })
+
+
+@role_required('admin')
+def user_disable(request, pk):
+    """停用/启用用户"""
+    from django.contrib.auth.models import User
+    user = get_object_or_404(User, pk=pk)
+    
+    if user == request.user:
+        messages.error(request, '不能停用自己的账号')
+        return redirect('user_list')
+    
+    user.is_active = not user.is_active
+    user.save()
+    status = '启用' if user.is_active else '停用'
+    messages.success(request, f'已{status}用户 {user.username}')
+    return redirect('user_list')
+
+
+@role_required('admin')
+def user_password_reset(request, pk):
+    """重置用户密码"""
+    from django.contrib.auth.models import User
+    user = get_object_or_404(User, pk=pk)
+    
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+        if form.is_valid():
+            user.set_password(form.cleaned_data['new_password'])
+            user.save()
+            messages.success(request, f'已重置用户 {user.username} 的密码')
+            return redirect('user_list')
+    else:
+        form = PasswordResetForm()
+    
+    return render(request, 'inventory/user_password.html', {
+        'form': form,
+        'target_user': user,
+    })
+
+
+@role_required('admin')
+def user_role_assign(request, pk):
+    """分配角色"""
+    from django.contrib.auth.models import User, Group
+    user = get_object_or_404(User, pk=pk)
+    
+    if request.method == 'POST':
+        new_role = request.POST.get('role', 'staff')
+        new_dept_id = request.POST.get('department', '')
+        
+        # 检查待处理数据
+        can_change, pending_items = check_pending_before_role_change(user)
+        if not can_change:
+            messages.error(request, f'无法变更角色，该用户有以下待处理数据：')
+            for item in pending_items:
+                messages.warning(request, item)
+            return redirect('user_role_assign', pk=pk)
+        
+        # 如果分配部门长，检查唯一性
+        if new_role == 'dept_head' and new_dept_id:
+            dept = Department.objects.get(pk=new_dept_id)
+            existing_head = check_dept_head_exists(dept, exclude_user=user)
+            if existing_head:
+                # 检查是否确认替换
+                confirm = request.POST.get('confirm_replace')
+                if confirm != '1':
+                    profile_ex = getattr(existing_head, 'profile', None)
+                    name_ex = profile_ex.name if profile_ex and profile_ex.name else existing_head.username
+                    return render(request, 'inventory/user_role_assign.html', {
+                        'target_user': user,
+                        'existing_head': {'name': name_ex, 'username': existing_head.username},
+                        'role_choices': ROLE_CHOICES,
+                        'departments': Department.objects.filter(is_active=True).order_by('sort_order', 'code'),
+                        'new_role': new_role,
+                        'new_dept_id': new_dept_id,
+                    })
+                else:
+                    # 降级旧部门长
+                    old_group = Group.objects.get(name='部门长')
+                    existing_head.groups.remove(old_group)
+                    staff_group = Group.objects.get(name='普通用户')
+                    existing_head.groups.add(staff_group)
+        
+        # 更新部门
+        profile = user.profile
+        if new_dept_id:
+            profile.department = Department.objects.get(pk=new_dept_id)
+        profile.applied_role = new_role
+        profile.save()
+        
+        # 更新角色组
+        group_name = ROLE_GROUP_MAP.get(new_role, '普通用户')
+        group = Group.objects.get_or_create(name=group_name)[0]
+        user.groups.set([group])
+        
+        messages.success(request, f'已将用户 {user.username} 的角色设置为「{dict(ROLE_CHOICES).get(new_role, new_role)}」')
+        return redirect('user_list')
+    
+    departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+    return render(request, 'inventory/user_role_assign.html', {
+        'target_user': user,
+        'role_choices': ROLE_CHOICES,
+        'departments': departments,
+    })
+
+
+@role_required('admin')
+def user_pending_list(request):
+    """待审核用户列表"""
+    from django.contrib.auth.models import User
+    pending_users = User.objects.filter(
+        profile__is_pending=True,
+        is_active=False,
+    ).select_related('profile', 'profile__department')
+    
+    return render(request, 'inventory/user_pending_list.html', {
+        'pending_users': pending_users,
+    })
+
+
+@role_required('admin')
+def user_approve(request, pk):
+    """审核用户"""
+    from django.contrib.auth.models import User, Group
+    user = get_object_or_404(User, pk=pk)
+    profile = user.profile
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'approve':
+            # 可修改角色和部门
+            role = request.POST.get('role', profile.applied_role)
+            dept_id = request.POST.get('department', '')
+            
+            # 部门长唯一性检查
+            if role == 'dept_head' and dept_id:
+                dept = Department.objects.get(pk=dept_id)
+                existing_head = check_dept_head_exists(dept, exclude_user=user)
+                if existing_head:
+                    confirm = request.POST.get('confirm_replace')
+                    if confirm != '1':
+                        profile_ex = getattr(existing_head, 'profile', None)
+                        name_ex = profile_ex.name if profile_ex and profile_ex.name else existing_head.username
+                        return render(request, 'inventory/user_approve.html', {
+                            'target_user': user,
+                            'existing_head': {'name': name_ex, 'username': existing_head.username},
+                            'role_choices': ROLE_CHOICES,
+                            'departments': Department.objects.filter(is_active=True).order_by('sort_order', 'code'),
+                            'selected_role': role,
+                            'selected_dept': dept_id,
+                        })
+                    else:
+                        old_group = Group.objects.get(name='部门长')
+                        existing_head.groups.remove(old_group)
+                        staff_group = Group.objects.get(name='普通用户')
+                        existing_head.groups.add(staff_group)
+            
+            profile.applied_role = role
+            if dept_id:
+                profile.department = Department.objects.get(pk=dept_id)
+            profile.is_pending = False
+            profile.save()
+            
+            user.is_active = True
+            user.save()
+            
+            # 分配角色组
+            group_name = ROLE_GROUP_MAP.get(role, '普通用户')
+            group = Group.objects.get_or_create(name=group_name)[0]
+            user.groups.set([group])
+            
+            messages.success(request, f'已审核通过用户 {user.username}')
+        
+        elif action == 'reject':
+            profile.is_pending = False
+            profile.save()
+            messages.info(request, f'已拒绝用户 {user.username} 的注册申请')
+        
+        return redirect('user_pending_list')
+    
+    departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+    return render(request, 'inventory/user_approve.html', {
+        'target_user': user,
+        'role_choices': ROLE_CHOICES,
+        'departments': departments,
+    })
+
+
+@role_required('admin')
+def permission_management(request):
+    """权限管理总览"""
+    from django.contrib.auth.models import User, Group
+    groups = Group.objects.all()
+    role_data = []
+    for role_key, role_name in ROLE_CHOICES:
+        group = Group.objects.filter(name=role_name).first()
+        users = group.user_set.select_related('profile', 'profile__department').all() if group else []
+        role_data.append({
+            'key': role_key,
+            'name': role_name,
+            'users': users,
+            'count': users.count(),
+        })
+    
+    return render(request, 'inventory/permissions.html', {
+        'role_data': role_data,
+    })
+
+
+# ========== 个人中心 ==========
+
+@login_required
+def profile_view(request):
+    """个人信息"""
+    profile = request.user.profile
+    if request.method == 'POST':
+        form = ProfileForm(request.POST)
+        if form.is_valid():
+            profile.name = form.cleaned_data['name']
+            profile.phone = form.cleaned_data['phone']
+            profile.save()
+            messages.success(request, '个人信息已更新')
+            return redirect('profile')
+    else:
+        form = ProfileForm(initial={
+            'name': profile.name,
+            'phone': profile.phone,
+        })
+    
+    return render(request, 'inventory/profile.html', {
+        'form': form,
+        'profile': profile,
+    })
+
+
+@login_required
+def profile_password(request):
+    """修改密码"""
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+        if form.is_valid():
+            request.user.set_password(form.cleaned_data['new_password'])
+            request.user.save()
+            messages.success(request, '密码已修改，请重新登录')
+            return redirect('login')
+    else:
+        form = PasswordResetForm()
+    
+    return render(request, 'inventory/profile_password.html', {'form': form})

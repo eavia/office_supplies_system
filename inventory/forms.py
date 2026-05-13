@@ -297,3 +297,117 @@ class ExcelImportForm(forms.Form):
         required=False,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
+
+
+class RegisterForm(forms.Form):
+    """用户注册表单"""
+    username = forms.CharField(
+        label='用户名',
+        max_length=150,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '登录用户名'})
+    )
+    password = forms.CharField(
+        label='密码',
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '密码'})
+    )
+    password_confirm = forms.CharField(
+        label='确认密码',
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '再次输入密码'})
+    )
+    name = forms.CharField(
+        label='姓名',
+        max_length=50,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '真实姓名'})
+    )
+    phone = forms.CharField(
+        label='手机号',
+        max_length=20,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '手机号（可选）'})
+    )
+    department = forms.ModelChoiceField(
+        label='所属部门',
+        queryset=None,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        empty_label='请选择部门'
+    )
+    applied_role = forms.ChoiceField(
+        label='申请角色',
+        choices=[
+            ('staff', '普通用户'),
+            ('warehouse', '仓管员'),
+            ('dept_head', '部门长'),
+        ],
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['department'].queryset = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        from django.contrib.auth.models import User
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError('该用户名已被注册')
+        return username
+
+    def clean(self):
+        cleaned = super().clean()
+        pw = cleaned.get('password')
+        pw2 = cleaned.get('password_confirm')
+        if pw and pw2 and pw != pw2:
+            self.add_error('password_confirm', '两次密码不一致')
+        return cleaned
+
+
+class UserEditForm(forms.Form):
+    """管理员编辑用户表单"""
+    name = forms.CharField(label='姓名', max_length=50, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    phone = forms.CharField(label='手机号', max_length=20, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    department = forms.ModelChoiceField(
+        label='所属部门',
+        queryset=None,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        empty_label='请选择部门'
+    )
+    role = forms.ChoiceField(
+        label='角色',
+        choices=[
+            ('admin', '管理员'),
+            ('warehouse', '仓管员'),
+            ('dept_head', '部门长'),
+            ('staff', '普通用户'),
+        ],
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    is_active = forms.BooleanField(label='启用', required=False, widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['department'].queryset = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
+
+
+class PasswordResetForm(forms.Form):
+    """密码重置表单"""
+    new_password = forms.CharField(
+        label='新密码',
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '输入新密码'})
+    )
+    confirm_password = forms.CharField(
+        label='确认新密码',
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '再次输入新密码'})
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('new_password') != cleaned.get('confirm_password'):
+            self.add_error('confirm_password', '两次密码不一致')
+        return cleaned
+
+
+class ProfileForm(forms.Form):
+    """个人信息编辑表单"""
+    name = forms.CharField(label='姓名', max_length=50, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    phone = forms.CharField(label='手机号', max_length=20, required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))

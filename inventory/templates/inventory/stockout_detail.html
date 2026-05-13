@@ -21,7 +21,7 @@
                     <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-print me-1"></i>打印
                     </button>
-                    {% if order.status == '待审批' %}
+                    {% if order.status == '待审批' or order.status == '待仓管审批' %}
                     <a href="{% url 'stockout_edit' order.pk %}" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-edit me-1"></i>编辑
                     </a>
@@ -42,7 +42,9 @@
                         <span class="detail-label">状态</span>
                         <span class="detail-value">
                             {% if order.status == '待审批' %}
-                            <span class="badge bg-warning">待审批</span>
+                            <span class="badge bg-warning">待部门长审批</span>
+                            {% elif order.status == '待仓管审批' %}
+                            <span class="badge bg-info">待仓管审批</span>
                             {% elif order.status == '已批准' %}
                             <span class="badge bg-success">已批准</span>
                             {% else %}
@@ -70,13 +72,23 @@
                         <span class="detail-label">操作员</span>
                         <span class="detail-value">{{ order.operator.username }}</span>
                     </div>
+                    {% if order.dept_approver %}
+                    <div class="detail-info-item">
+                        <span class="detail-label">部门长审批人</span>
+                        <span class="detail-value">{{ order.dept_approver.username }}</span>
+                    </div>
+                    <div class="detail-info-item">
+                        <span class="detail-label">部门长审批时间</span>
+                        <span class="detail-value">{{ order.dept_approval_time|date:"Y-m-d H:i" }}</span>
+                    </div>
+                    {% endif %}
                     {% if order.approver %}
                     <div class="detail-info-item">
-                        <span class="detail-label">审批人</span>
+                        <span class="detail-label">仓管审批人</span>
                         <span class="detail-value">{{ order.approver.username }}</span>
                     </div>
                     <div class="detail-info-item">
-                        <span class="detail-label">审批时间</span>
+                        <span class="detail-label">仓管审批时间</span>
                         <span class="detail-value">{{ order.approval_time|date:"Y-m-d H:i" }}</span>
                     </div>
                     {% endif %}
@@ -86,9 +98,15 @@
                         <span class="detail-value">{{ order.purpose }}</span>
                     </div>
                     {% endif %}
+                    {% if order.dept_approval_comment %}
+                    <div class="detail-info-item full-width">
+                        <span class="detail-label">部门长审批意见</span>
+                        <span class="detail-value">{{ order.dept_approval_comment }}</span>
+                    </div>
+                    {% endif %}
                     {% if order.approval_comment %}
                     <div class="detail-info-item full-width">
-                        <span class="detail-label">审批意见</span>
+                        <span class="detail-label">仓管审批意见</span>
                         <span class="detail-value">{{ order.approval_comment }}</span>
                     </div>
                     {% endif %}
@@ -120,6 +138,49 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- 二级审批操作区 -->
+                {% if order.status == '待审批' and can_dept_approve %}
+                <div class="card mt-3">
+                    <div class="card-header bg-warning bg-opacity-10">
+                        <h6 class="mb-0"><i class="fas fa-user-tie me-2"></i>部门长审批</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label class="form-label">审批意见</label>
+                                <textarea name="comment" class="form-control" rows="2" placeholder="审批意见（可选）"></textarea>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" name="action" value="dept_approve" class="btn btn-success"><i class="fas fa-check me-1"></i>通过</button>
+                                <button type="submit" name="action" value="dept_reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>驳回</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if order.status == '待仓管审批' and can_warehouse_approve %}
+                <div class="card mt-3">
+                    <div class="card-header bg-info bg-opacity-10">
+                        <h6 class="mb-0"><i class="fas fa-warehouse me-2"></i>仓管审批</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label class="form-label">审批意见</label>
+                                <textarea name="comment" class="form-control" rows="2" placeholder="审批意见（可选）"></textarea>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" name="action" value="wh_approve" class="btn btn-success"><i class="fas fa-check me-1"></i>通过</button>
+                                <button type="submit" name="action" value="wh_reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>驳回</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
 
                 <!-- 签字栏 -->
                 <div class="signature-area">

@@ -70,4 +70,25 @@ urlpatterns = [
     path('departments/create/', views.department_create, name='department_create'),
     path('departments/<int:pk>/update/', views.department_update, name='department_update'),
     path('departments/<int:pk>/delete/', views.department_delete, name='department_delete'),
+
+    # 用户管理
+    path('users/', views.user_list, name='user_list'),
+    path('users/create/', views.user_create, name='user_create'),
+    path('users/<int:pk>/edit/', views.user_edit, name='user_edit'),
+    path('users/<int:pk>/disable/', views.user_disable, name='user_disable'),
+    path('users/<int:pk>/password/', views.user_password_reset, name='user_password_reset'),
+    path('users/<int:pk>/role/', views.user_role_assign, name='user_role_assign'),
+    path('users/pending/', views.user_pending_list, name='user_pending_list'),
+    path('users/<int:pk>/approve/', views.user_approve, name='user_approve'),
+    path('users/permissions/', views.permission_management, name='permission_management'),
+
+    # 个人中心
+    path('profile/', views.profile_view, name='profile'),
+    path('profile/password/', views.profile_password, name='profile_password'),
+
+    # 注册
+    path('register/', views.register_view, name='register'),
+
+    # API
+    path('api/dept-head-check/', views.api_dept_head_check, name='api_dept_head_check'),
 ]

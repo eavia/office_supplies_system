@@ -1,0 +1,54 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}待审核用户{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-user-clock me-2" style="color:#ed8936;"></i>待审核用户</h5>
+        <a href="{% url 'user_list' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i>返回用户列表</a>
+    </div>
+    <div class="card-body">
+        {% if pending_users %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>用户名</th>
+                        <th>姓名</th>
+                        <th>申请部门</th>
+                        <th>申请角色</th>
+                        <th>手机号</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in pending_users %}
+                    <tr>
+                        <td>{{ u.username }}</td>
+                        <td>{{ u.profile.name|default:"-" }}</td>
+                        <td>{{ u.profile.department|default:"-" }}</td>
+                        <td>
+                            <span class="badge bg-info">
+                                {{ u.profile.get_applied_role_display }}
+                            </span>
+                        </td>
+                        <td>{{ u.profile.phone|default:"-" }}</td>
+                        <td>
+                            <a href="{% url 'user_approve' u.pk %}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-check me-1"></i>审核
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-check-circle fa-3x mb-3" style="color:#48bb78;"></i>
+            <p>暂无待审核用户</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

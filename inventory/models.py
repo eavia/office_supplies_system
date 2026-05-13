@@ -1,6 +1,8 @@
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 import uuid
 import re
 
@@ -327,10 +329,13 @@ class StockOutOrder(models.Model):
     out_type = models.CharField('出库类型', max_length=20, default='领用',
                                 choices=[('领用', '领用'), ('归还', '归还'), ('报废', '报废'), ('调拨', '调拨')])
     status = models.CharField('审批状态', max_length=20, default='待审批',
-                              choices=[('待审批', '待审批'), ('已批准', '已批准'), ('已拒绝', '已拒绝')])
-    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stockout_approvals', verbose_name='审批人')
-    approval_time = models.DateTimeField('审批时间', null=True, blank=True)
-    approval_comment = models.TextField('审批意见', blank=True)
+                              choices=[('待审批', '待审批'), ('待仓管审批', '待仓管审批'), ('已批准', '已批准'), ('已拒绝', '已拒绝')])
+    dept_approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stockout_dept_approvals', verbose_name='部门长审批人')
+    dept_approval_time = models.DateTimeField('部门长审批时间', null=True, blank=True)
+    dept_approval_comment = models.TextField('部门长审批意见', blank=True)
+    approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='stockout_approvals', verbose_name='仓管审批人')
+    approval_time = models.DateTimeField('仓管审批时间', null=True, blank=True)
+    approval_comment = models.TextField('仓管审批意见', blank=True)
     created_at = models.DateTimeField('出库时间', auto_now_add=True)
 
     class Meta:
@@ -459,3 +464,58 @@ class ReturnApplication(models.Model):
         if not self.return_no:
             self.return_no = f"GH{self.created_at.strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
         super().save(*args, **kwargs)
+
+
+# ========== 角色常量 ==========
+ROLE_CHOICES = [
+    ('admin', '管理员'),
+    ('warehouse', '仓管员'),
+    ('dept_head', '部门长'),
+    ('staff', '普通用户'),
+]
+
+ROLE_GROUP_MAP = {
+    'admin': '管理员',
+    'warehouse': '仓管员',
+    'dept_head': '部门长',
+    'staff': '普通用户',
+}
+
+
+class Profile(models.Model):
+    """用户扩展信息"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name='用户')
+    name = models.CharField('姓名', max_length=50, blank=True)
+    phone = models.CharField('手机号', max_length=20, blank=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='所属部门')
+    applied_role = models.CharField('申请角色', max_length=20, choices=ROLE_CHOICES, default='staff')
+    is_pending = models.BooleanField('待审核', default=False, help_text='注册后待管理员审核')
+
+    class Meta:
+        verbose_name = '用户信息'
+        verbose_name_plural = '用户信息管理'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.name or self.user.username}"
+
+    @property
+    def role(self):
+        """获取用户当前角色"""
+        groups = self.user.groups.values_list('name', flat=True)
+        for role_key, group_name in ROLE_GROUP_MAP.items():
+            if group_name in groups:
+                return role_key
+        return 'staff'
+
+    @property
+    def role_display(self):
+        """获取角色中文名"""
+        role = self.role
+        return dict(ROLE_CHOICES).get(role, '普通用户')
+
+
+# ========== 信号：User 创建时自动创建 Profile ==========
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.get_or_create(user=instance)
