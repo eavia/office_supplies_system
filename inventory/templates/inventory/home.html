@@ -62,10 +62,7 @@
             </div>
             <div class="card-footer d-flex gap-2">
                 <a href="{% url 'approval_list' %}" class="text-decoration-none" style="color:#4299e1;">
-                    入库审批 <i class="fas fa-arrow-right ms-1"></i>
-                </a>
-                <a href="{% url 'stockout_list' %}?status=待审批" class="text-decoration-none" style="color:#4299e1;">
-                    出库审批 <i class="fas fa-arrow-right ms-1"></i>
+                    查看详情 <i class="fas fa-arrow-right ms-1"></i>
                 </a>
             </div>
         </div>
@@ -155,7 +152,7 @@
                         </thead>
                         <tbody>
                             {% for app in recent_applications %}
-                            <tr>
+                            <tr onclick="window.location='{% url 'stockin_application_detail' app.pk %}'" style="cursor:pointer;">
                                 <td>{{ app.application_no }}</td>
                                 <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}">
                                     {% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}
@@ -198,7 +195,7 @@
                         </thead>
                         <tbody>
                             {% for out in recent_outs %}
-                            <tr>
+                            <tr onclick="window.location='{% url 'stockout_detail' out.pk %}'" style="cursor:pointer;">
                                 <td>{{ out.record_no }}</td>
                                 <td>
                                     {% for item in out.items.all %}

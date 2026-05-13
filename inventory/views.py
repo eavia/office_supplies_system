@@ -36,7 +36,15 @@ def department_create(request):
             messages.success(request, '部门添加成功！')
             return redirect('department_list')
     else:
-        form = DepartmentForm()
+        initial = {}
+        parent_id = request.GET.get('parent')
+        if parent_id:
+            try:
+                parent = Department.objects.get(pk=parent_id)
+                initial['parent'] = parent
+            except Department.DoesNotExist:
+                pass
+        form = DepartmentForm(initial=initial)
 
     return render(request, 'inventory/department_form.html', {
         'form': form,
@@ -418,7 +426,13 @@ def stockin_application_create(request):
                 supply = OfficeSupply.objects.get(pk=item['supply_id'])
                 qty = int(item['quantity'])
                 unit_price = Decimal(str(item.get('unit_price', supply.price or 0)))
-                StockInItem.objects.create(application=app, supply=supply, quantity=qty, unit_price=unit_price)
+                StockInItem.objects.create(
+                    application=app, supply=supply, quantity=qty, unit_price=unit_price,
+                    specification=supply.specification or '',
+                    unit=supply.unit,
+                    location=supply.location or '',
+                    supplier=supply.supplier or '',
+                )
 
             messages.success(request, f'入库单 "{app.application_no}" 提交成功，共 {len(items_data)} 项物品！')
             return redirect('stockin_application_list')
@@ -497,7 +511,13 @@ def stockin_application_update(request, pk):
                 supply = OfficeSupply.objects.get(pk=item['supply_id'])
                 qty = int(item['quantity'])
                 unit_price = Decimal(str(item.get('unit_price', supply.price or 0)))
-                StockInItem.objects.create(application=application, supply=supply, quantity=qty, unit_price=unit_price)
+                StockInItem.objects.create(
+                    application=application, supply=supply, quantity=qty, unit_price=unit_price,
+                    specification=supply.specification or '',
+                    unit=supply.unit,
+                    location=supply.location or '',
+                    supplier=supply.supplier or '',
+                )
 
             messages.success(request, '入库单更新成功！')
             return redirect('stockin_application_list')
@@ -781,7 +801,13 @@ def stockout_create(request):
             for item in items_data:
                 supply = OfficeSupply.objects.get(pk=item['supply_id'])
                 qty = int(item['quantity'])
-                StockOutItem.objects.create(order=order, supply=supply, quantity=qty)
+                StockOutItem.objects.create(
+                    order=order, supply=supply, quantity=qty,
+                    specification=supply.specification or '',
+                    unit=supply.unit,
+                    location=supply.location or '',
+                    supplier=supply.supplier or '',
+                )
 
             messages.success(request, f'出库单 "{order.record_no}" 已提交，等待审批！')
             return redirect('stockout_list')
@@ -869,7 +895,13 @@ def stockout_edit(request, pk):
                 merged[sid] = merged.get(sid, 0) + qty
             for sid, qty in merged.items():
                 supply = OfficeSupply.objects.get(pk=sid)
-                StockOutItem.objects.create(order=order, supply=supply, quantity=qty)
+                StockOutItem.objects.create(
+                    order=order, supply=supply, quantity=qty,
+                    specification=supply.specification or '',
+                    unit=supply.unit,
+                    location=supply.location or '',
+                    supplier=supply.supplier or '',
+                )
 
             messages.success(request, f'出库单 "{order.record_no}" 更新成功！')
             return redirect('stockout_list')
@@ -934,6 +966,12 @@ def return_application_create(request):
         if form.is_valid():
             ret = form.save(commit=False)
             ret.operator = request.user
+            # 快照物品属性
+            supply = ret.supply
+            ret.specification = supply.specification or ''
+            ret.unit = supply.unit
+            ret.location = supply.location or ''
+            ret.supplier = supply.supplier or ''
             ret.save()
             
             # 归还自动增加库存
@@ -1721,3 +1759,97 @@ def device_template_download(request):
     )
     response['Content-Disposition'] = 'attachment; filename="IT设备导入模板.xlsx"'
     return response
+
+
+# ==================== 物品详情（属性编辑 + 操作记录）====================
+@login_required
+def supply_detail(request, pk):
+    """物品详情页：属性编辑 + 操作记录"""
+    supply = get_object_or_404(
+        OfficeSupply.objects.select_related('item_category'),
+        pk=pk
+    )
+
+    if request.method == 'POST':
+        form = OfficeSupplyForm(request.POST, instance=supply)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'物品 "{supply.name}" 更新成功！')
+            return redirect('supply_detail', pk=supply.pk)
+    else:
+        form = OfficeSupplyForm(instance=supply)
+
+    # 规格和单位始终可编辑（已移除库存限制）
+    has_stock = False
+
+    # 收集该物品的所有操作记录
+    records = []
+
+    # 入库记录
+    stockin_items = StockInItem.objects.filter(
+        supply=supply
+    ).select_related(
+        'application__applicant', 'application__department'
+    ).order_by('-application__stockin_date')
+    for item in stockin_items:
+        records.append({
+            'time': item.application.stockin_date,
+            'type': '入库',
+            'type_class': 'text-success',
+            'no': item.application.application_no,
+            'link_pk': item.application.pk,
+            'link_url': 'stockin_application_detail',
+            'quantity': item.quantity,
+            'unit': item.unit or supply.unit,
+            'specification': item.specification or supply.specification or '',
+            'person': item.application.applicant.username if item.application.applicant else '-',
+            'remark': item.application.reason or '',
+        })
+
+    # 出库记录
+    stockout_items = StockOutItem.objects.filter(
+        supply=supply
+    ).select_related(
+        'order__operator'
+    ).order_by('-order__created_at')
+    for item in stockout_items:
+        records.append({
+            'time': item.order.created_at.date(),
+            'type': '出库',
+            'type_class': 'text-danger',
+            'no': item.order.record_no,
+            'link_pk': item.order.pk,
+            'link_url': 'stockout_detail',
+            'quantity': -item.quantity,
+            'unit': item.unit or supply.unit,
+            'specification': item.specification or supply.specification or '',
+            'person': item.order.recipient or '-',
+            'remark': item.order.purpose or '',
+        })
+
+    # 归还记录
+    returns = ReturnApplication.objects.filter(
+        supply=supply
+    ).select_related('department').order_by('-return_date')
+    for ret in returns:
+        records.append({
+            'time': ret.return_date,
+            'type': '归还',
+            'type_class': 'text-primary',
+            'no': ret.return_no,
+            'quantity': ret.quantity,
+            'unit': ret.unit or supply.unit,
+            'specification': ret.specification or supply.specification or '',
+            'person': ret.returner or '-',
+            'remark': ret.reason or '',
+        })
+
+    # 按时间倒序
+    records.sort(key=lambda r: str(r['time']) if r['time'] else '', reverse=True)
+
+    return render(request, 'inventory/supply_detail.html', {
+        'supply': supply,
+        'form': form,
+        'records': records,
+        'has_stock': False,  # 已移除库存限制
+    })

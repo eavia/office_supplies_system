@@ -11,6 +11,7 @@ urlpatterns = [
     path('supplies/name-search/', views.supply_name_search, name='supply_name_search'),
     path('supplies/<int:pk>/update/', views.supply_update, name='supply_update'),
     path('supplies/<int:pk>/delete/', views.supply_delete, name='supply_delete'),
+    path('supplies/<int:pk>/detail/', views.supply_detail, name='supply_detail'),
     path('supplies/<int:pk>/add-stock/', views.supply_add_stock, name='supply_add_stock'),
     path('supplies/export/', views.supply_export_excel, name='supply_export'),
     path('supplies/import/', views.supply_import_excel, name='supply_import'),

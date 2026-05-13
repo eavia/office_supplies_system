@@ -198,12 +198,15 @@
     .table { border-collapse: collapse !important; width: 100% !important; }
     .table th, .table td { border: 1px solid #333 !important; padding: 6px 8px !important; font-size: 12px; }
     .table thead th { background: #f0f0f0 !important; }
+
+    /* 打印时显示签名栏 */
+    .signature-area { display: flex !important; justify-content: space-between; margin-top: 60px; }
 }
 
 /* 屏幕上隐藏打印标题 */
 .print-header { display: none; }
 
-.signature-area { display: flex; justify-content: space-between; margin-top: 60px; }
+.signature-area { display: none; }  /* 屏幕上隐藏，打印时显示 */
 .sig-item { font-size: 14px; }
 .sig-label { font-weight: 600; }
 .sig-line { display: inline-block; min-width: 120px; border-bottom: 1px solid #333; }

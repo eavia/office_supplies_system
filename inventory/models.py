@@ -298,6 +298,11 @@ class StockInItem(models.Model):
     supply = models.ForeignKey(OfficeSupply, on_delete=models.CASCADE, verbose_name='物品')
     quantity = models.IntegerField('申请数量')
     unit_price = models.DecimalField('单价', max_digits=10, decimal_places=2, default=0)
+    # 快照字段：记录入库时物品的属性，防止后续物品属性变更导致历史记录失真
+    specification = models.CharField('规格快照', max_length=100, blank=True)
+    unit = models.CharField('单位快照', max_length=20, default='个')
+    location = models.CharField('存放位置快照', max_length=100, blank=True)
+    supplier = models.CharField('供应商快照', max_length=100, blank=True)
 
     class Meta:
         verbose_name = '入库明细'
@@ -358,6 +363,11 @@ class StockOutItem(models.Model):
     order = models.ForeignKey(StockOutOrder, on_delete=models.CASCADE, related_name='items', verbose_name='出库单')
     supply = models.ForeignKey(OfficeSupply, on_delete=models.CASCADE, verbose_name='物品')
     quantity = models.IntegerField('出库数量')
+    # 快照字段：记录出库时物品的属性，防止后续物品属性变更导致历史记录失真
+    specification = models.CharField('规格快照', max_length=100, blank=True)
+    unit = models.CharField('单位快照', max_length=20, default='个')
+    location = models.CharField('存放位置快照', max_length=100, blank=True)
+    supplier = models.CharField('供应商快照', max_length=100, blank=True)
 
     class Meta:
         verbose_name = '出库明细'
@@ -429,6 +439,11 @@ class ReturnApplication(models.Model):
     reason = models.TextField('归还原因', blank=True)
     operator = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='操作员')
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    # 快照字段：记录归还时物品的属性，防止后续物品属性变更导致历史记录失真
+    specification = models.CharField('规格快照', max_length=100, blank=True)
+    unit = models.CharField('单位快照', max_length=20, default='个')
+    location = models.CharField('存放位置快照', max_length=100, blank=True)
+    supplier = models.CharField('供应商快照', max_length=100, blank=True)
     
     class Meta:
         verbose_name = '归还申请'
