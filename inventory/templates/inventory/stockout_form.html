@@ -18,14 +18,27 @@
                         <div class="col-md-6">
                             <label class="form-label">{{ field.label }}</label>
                             {% if field.name == 'department' %}
-                            <div class="position-relative">
-                                <input type="text" id="deptQuickSearch" class="form-control" autocomplete="off"
-                                    placeholder="输入首字母/编码快速查找部门"
-                                    value="{% with selected_value=field.value|stringformat:'s' %}{% for val, label in field.field.choices %}{% if val|stringformat:'s' == selected_value %}{{ label }}{% endif %}{% endfor %}{% endwith %}">
-                                <input type="hidden" name="{{ field.html_name }}" id="id_department" value="{{ field.value|default:'' }}">
-                                <div id="deptSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:10;max-height:220px;overflow-y:auto;display:none;"></div>
-                            </div>
-                            <div class="form-text text-muted" id="deptSearchHint">支持首字母/编码检索，回车直接录入第一条匹配项</div>
+                                {% if field.field.widget.input_type == 'hidden' %}
+                                    <!-- 非管理员/仓管员：部门锁定为用户所属部门 -->
+                                    <div class="form-control bg-light" readonly>
+                                        {% if request.user.profile.department %}
+                                            {{ request.user.profile.department.code }} {{ request.user.profile.department.name }}
+                                        {% else %}
+                                            <span class="text-muted">未分配部门</span>
+                                        {% endif %}
+                                    </div>
+                                    {{ field }}
+                                    <div class="form-text text-muted">部门已锁定，不可更改</div>
+                                {% else %}
+                                    <div class="position-relative">
+                                        <input type="text" id="deptQuickSearch" class="form-control" autocomplete="off"
+                                            placeholder="输入首字母/编码快速查找部门"
+                                            value="{% with selected_value=field.value|stringformat:'s' %}{% for val, label in field.field.choices %}{% if val|stringformat:'s' == selected_value %}{{ label }}{% endif %}{% endfor %}{% endwith %}">
+                                        <input type="hidden" name="{{ field.html_name }}" id="id_department" value="{{ field.value|default:'' }}">
+                                        <div id="deptSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:10;max-height:220px;overflow-y:auto;display:none;"></div>
+                                    </div>
+                                    <div class="form-text text-muted" id="deptSearchHint">支持首字母/编码检索，回车直接录入第一条匹配项</div>
+                                {% endif %}
                             {% else %}
                             {{ field }}
                             {% endif %}
@@ -135,7 +148,17 @@
         return { hiddenInput, hint };
     }
 
-    const deptRefs = initDeptSearch();
+    let deptRefs = initDeptSearch();
+    // 部门锁定时：使用隐藏字段直接作为校验源
+    if (!deptRefs) {
+        const hiddenDept = document.querySelector('input[name="department"]');
+        if (hiddenDept) {
+            deptRefs = {
+                hiddenInput: hiddenDept,
+                hint: { textContent: '', className: '' }
+            };
+        }
+    }
 
     // ========== 物品明细动态表 ==========
     const itemsBody = document.getElementById('itemsBody');
@@ -216,7 +239,8 @@
                             const btn = document.createElement('button');
                             btn.type = 'button';
                             btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1';
-                            btn.innerHTML = `<span>${item.name}${item.specification ? ' (' + item.specification + ')' : ''}</span><span class="badge bg-light text-dark">库存 ${item.quantity} ${item.unit || ''}</span>`;
+                            const availText = item.available_quantity !== undefined ? item.available_quantity : item.quantity;
+                            btn.innerHTML = `<span>${item.name}${item.specification ? ' (' + item.specification + ')' : ''}</span><span class="badge bg-light text-dark">可用 ${availText} ${item.unit || ''}</span>`;
                             btn.addEventListener('click', () => {
                                 // 检查是否已存在相同物品
                                 const existing = findExistingSupplyId(item.id, idx);
@@ -224,10 +248,11 @@
                                     alert(`物品「${item.name}」已在第 ${existing} 行，请修改已有行的数量，不要重复添加。`);
                                     return;
                                 }
-                                searchInput.value = `${item.name}${item.specification ? '(' + item.specification + ')' : ''}`;
+                                searchInput.value = item.name;
                                 hiddenInput.value = item.id;
-                                stockCell.textContent = item.quantity + ' ' + (item.unit || '');
-                                stockCell.className = 'text-center itemStock' + (item.quantity <= 0 ? ' text-danger fw-bold' : '');
+                                const availQty = item.available_quantity !== undefined ? item.available_quantity : item.quantity;
+                                stockCell.textContent = availQty + ' ' + (item.unit || '');
+                                stockCell.className = 'text-center itemStock' + (availQty <= 0 ? ' text-danger fw-bold' : '');
                                 specCell.textContent = item.specification || '-';
                                 suggestions.style.display = 'none';
                             });
@@ -305,9 +330,15 @@
 
         // 部门校验
         if (!deptRefs.hiddenInput.value) {
-            deptRefs.hint.textContent = '请先查找并录入一个有效部门';
-            deptRefs.hint.className = 'form-text text-danger';
-            document.getElementById('deptQuickSearch').focus();
+            const searchInput = document.getElementById('deptQuickSearch');
+            if (searchInput) {
+                deptRefs.hint.textContent = '请先查找并录入一个有效部门';
+                deptRefs.hint.className = 'form-text text-danger';
+                searchInput.focus();
+            } else {
+                // 部门锁定时：未分配部门则阻止提交
+                alert('您未分配所属部门，无法创建出库单，请联系管理员。');
+            }
             ok = false;
         }
 

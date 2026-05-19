@@ -18,6 +18,11 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0"><i class="fas fa-file-alt me-2" style="color:#4299e1;"></i>入库单</h4>
                 <div class="d-flex gap-2">
+                    {% if application.status == '已批准' %}
+                    <a href="{% url 'stockout_create' %}?from_stockin={{ application.id }}" class="btn btn-success btn-sm">
+                        <i class="fas fa-sign-out-alt me-1"></i>快速出库
+                    </a>
+                    {% endif %}
                     <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
                         <i class="fas fa-print me-1"></i>打印
                     </button>
@@ -61,18 +66,6 @@
                         <span class="detail-label">入库日期</span>
                         <span class="detail-value">{{ application.stockin_date|date:"Y-m-d" }}</span>
                     </div>
-                    {% if application.counterpart_doc_no %}
-                    <div class="detail-info-item">
-                        <span class="detail-label">对方单据编号</span>
-                        <span class="detail-value">{{ application.counterpart_doc_no }}</span>
-                    </div>
-                    {% endif %}
-                    {% if application.invoice_no %}
-                    <div class="detail-info-item">
-                        <span class="detail-label">发票编号</span>
-                        <span class="detail-value">{{ application.invoice_no }}</span>
-                    </div>
-                    {% endif %}
                     {% if application.approver %}
                     <div class="detail-info-item">
                         <span class="detail-label">审批人</span>
@@ -110,6 +103,7 @@
                                 <th style="width:80px">数量</th>
                                 <th style="width:100px">单价</th>
                                 <th style="width:100px">小计</th>
+                                <th style="width:160px">发票或对方单据编号</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -122,6 +116,7 @@
                                 <td class="text-center">{{ item.quantity }}</td>
                                 <td class="text-end">¥{{ item.unit_price|floatformat:2 }}</td>
                                 <td class="text-end fw-bold">¥{{ item.subtotal|floatformat:2 }}</td>
+                                <td class="text-center">{{ item.doc_no|default:"-" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -129,6 +124,7 @@
                             <tr class="table-active fw-bold">
                                 <td colspan="6" class="text-end">合计：</td>
                                 <td class="text-end">¥{{ application.get_total_amount|floatformat:2 }}</td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>

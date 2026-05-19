@@ -75,13 +75,11 @@ class StockInApplicationForm(forms.ModelForm):
     """入库单表单（多物品，只选已有）"""
     class Meta:
         model = StockInApplication
-        fields = ['department', 'reason', 'stockin_date', 'counterpart_doc_no', 'invoice_no']
+        fields = ['department', 'reason', 'stockin_date']
         widgets = {
             'department': forms.Select(attrs={'class': 'form-select'}),
             'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '申请原因'}),
             'stockin_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'counterpart_doc_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '对方单据编号（可选）'}),
-            'invoice_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '发票编号（可选）'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -128,6 +126,7 @@ class StockOutForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         active_departments = list(Department.objects.filter(is_active=True).order_by('sort_order', 'code'))
         self.fields['department'].queryset = Department.objects.filter(pk__in=[d.pk for d in active_departments]).order_by('sort_order', 'code')
@@ -142,12 +141,36 @@ class StockOutForm(forms.ModelForm):
             for d in active_departments
         })
 
+        # 非管理员/仓管员：锁定部门为用户所属部门
+        if self.user:
+            from .utils import get_user_role
+            role = get_user_role(self.user)
+            if role not in ('admin', 'warehouse'):
+                profile = getattr(self.user, 'profile', None)
+                user_dept = getattr(profile, 'department', None)
+                # 无论用户是否有部门，统一隐藏字段并锁定
+                self.fields['department'].widget = forms.HiddenInput()
+                if user_dept:
+                    self.fields['department'].initial = user_dept.pk
+                    self.fields['department'].queryset = Department.objects.filter(pk=user_dept.pk)
+                else:
+                    self.fields['department'].queryset = Department.objects.none()
+
     def clean_department(self):
         department = self.cleaned_data.get('department')
         if not department:
             return department
         if not department.is_active:
             raise forms.ValidationError('该部门已停用，请选择有效部门')
+        # 非管理员/仓管员：强制校验部门必须等于用户所属部门
+        if self.user:
+            from .utils import get_user_role
+            role = get_user_role(self.user)
+            if role not in ('admin', 'warehouse'):
+                profile = getattr(self.user, 'profile', None)
+                user_dept = getattr(profile, 'department', None)
+                if user_dept and department.pk != user_dept.pk:
+                    raise forms.ValidationError('部门必须与您的所属部门一致')
         return department
 
 

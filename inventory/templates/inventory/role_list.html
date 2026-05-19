@@ -1,0 +1,338 @@
+{% extends 'inventory/base.html' %}
+{% load custom_filters %}
+{% block page_title %}角色与权限配置{% endblock %}
+{% block extra_css %}
+<style>
+.role-sidebar { min-width: 180px; max-width: 220px; }
+.role-sidebar .nav-link { cursor: pointer; border-radius: 6px; margin-bottom: 4px; }
+.role-sidebar .nav-link.active { background: #0075de; color: #fff; }
+.role-sidebar .nav-link:hover:not(.active) { background: #f1f5f9; }
+.role-sidebar .badge { font-size: 0.7rem; }
+.permission-table th { font-size: 0.8rem; white-space: nowrap; background: #f8fafc; }
+.permission-table td { font-size: 0.85rem; vertical-align: middle; }
+.permission-table select.form-select-sm { min-width: 90px; padding-right: 1.5rem; }
+.module-header { background: #eef2ff; font-weight: 600; }
+.unsaved-indicator { display: none; }
+.has-unsaved .unsaved-indicator { display: inline; }
+.scope-badge-all { background: #dcfce7; color: #166534; }
+.scope-badge-dept { background: #dbeafe; color: #1e40af; }
+.scope-badge-own  { background: #fef3c7; color: #92400e; }
+.scope-badge-none { background: #f3f4f6; color: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="fas fa-user-shield me-2" style="color:#0075de;"></i>角色与权限配置</h4>
+    <div>
+        <a href="{% url 'role_create' %}" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>新增角色</a>
+        <a href="{% url 'user_list' %}" class="btn btn-outline-secondary btn-sm ms-2"><i class="fas fa-arrow-left me-1"></i>返回用户列表</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- 左侧角色列表 -->
+    <div class="col-md-3 col-lg-2">
+        <div class="card">
+            <div class="card-header py-2">
+                <small class="fw-bold text-muted">选择角色</small>
+            </div>
+            <div class="card-body p-2">
+                <div class="nav flex-column role-sidebar" id="roleTabList">
+                    {% for r in roles %}
+                    <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center {% if forloop.first %}active{% endif %}"
+                       data-role-key="{{ r.key }}" data-role-name="{{ r.name }}" data-role-builtin="{{ r.is_builtin|yesno:'1,0' }}"
+                       onclick="switchRole(this)">
+                        <span>{{ r.name }}</span>
+                        <span class="unsaved-indicator badge bg-warning text-dark ms-1" style="font-size:0.6rem;">●</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <div class="small text-muted mb-2"><strong>数据范围说明</strong></div>
+            <div class="d-flex align-items-center mb-1"><span class="badge scope-badge-all me-2" style="font-size:0.7rem;">全部</span><small class="text-muted">全部数据</small></div>
+            <div class="d-flex align-items-center mb-1"><span class="badge scope-badge-dept me-2" style="font-size:0.7rem;">本部门</span><small class="text-muted">仅本部门</small></div>
+            <div class="d-flex align-items-center mb-1"><span class="badge scope-badge-own  me-2" style="font-size:0.7rem;">仅自己</span><small class="text-muted">仅自己创建</small></div>
+            <div class="d-flex align-items-center"><span class="badge scope-badge-none me-2" style="font-size:0.7rem;">无权限</span><small class="text-muted">不可操作</small></div>
+        </div>
+    </div>
+
+    <!-- 右侧权限矩阵 -->
+    <div class="col-md-9 col-lg-10">
+        <div class="card" id="permissionCard">
+            <div class="card-header d-flex justify-content-between align-items-center py-3">
+                <div>
+                    <span class="fw-bold" id="currentRoleName">{{ roles.0.name }}</span>
+                    <span class="badge bg-secondary ms-2" id="currentRoleBadge">{{ roles.0.key }}</span>
+                    {% if roles.0.is_builtin %}<span class="badge bg-info ms-1">内置</span>{% endif %}
+                    <span class="unsaved-indicator badge bg-warning text-dark ms-2">未保存</span>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAll()"><i class="fas fa-expand me-1"></i>全部展开</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="collapseAll()"><i class="fas fa-compress me-1"></i>全部收起</button>
+                    <button type="button" class="btn btn-success btn-sm ms-2" onclick="savePermissions()"><i class="fas fa-save me-1"></i>保存配置</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="permissionAccordion">
+                    {% for mod in matrix.modules %}
+                    <div class="permission-module" data-module="{{ mod.key }}">
+                        <div class="module-header px-3 py-2 d-flex justify-content-between align-items-center"
+                             style="cursor:pointer;" onclick="toggleModule(this)">
+                            <span><i class="fas fa-chevron-down me-2" style="font-size:0.7rem;"></i>{{ mod.name }}</span>
+                            <div class="d-flex gap-1">
+                                {% for sc in scope_choices %}
+                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:0.7rem;"
+                                        onclick="event.stopPropagation(); batchSetModuleScope('{{ mod.key }}', '{{ sc.key }}')">
+                                    {{ sc.name }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="module-body" style="display:block;">
+                            <table class="table table-hover table-sm permission-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-3">操作</th>
+                                        {% for r in matrix.roles %}
+                                        <th class="text-center role-col" data-role-key="{{ r.key }}" style="display:{% if forloop.first %}table-cell{% else %}none{% endif %};">
+                                            <div class="scope-selector-header">
+                                                <select class="form-select form-select-sm" onchange="batchSetColumnScope('{{ r.key }}', this.value)">
+                                                    {% for sc in scope_choices %}<option value="{{ sc.key }}">{{ sc.name }}</option>{% endfor %}
+                                                </select>
+                                            </div>
+                                        </th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for action in mod.actions %}
+                                    <tr data-action="{{ action }}">
+                                        <td class="ps-3 text-muted">{{ action }}</td>
+                                        {% for r in matrix.roles %}
+                                        {% with scope=r.permissions|get_item:mod.key|get_item:action|default:'none' %}
+                                        <td class="text-center role-col" data-role-key="{{ r.key }}" style="display:{% if forloop.first %}table-cell{% else %}none{% endif %};">
+                                            <select class="form-select form-select-sm scope-select"
+                                                    data-role="{{ r.key }}" data-module="{{ mod.key }}" data-action="{{ action }}"
+                                                    onchange="markUnsaved('{{ r.key }}')">
+                                                {% for sc in scope_choices %}
+                                                <option value="{{ sc.key }}" {% if scope == sc.key %}selected{% endif %}>{{ sc.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        {% endwith %}
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 当前选中的角色
+let currentRoleKey = '{{ roles.0.key }}';
+let unsavedRoles = new Set();
+
+function switchRole(el) {
+    const key = el.dataset.roleKey;
+    const name = el.dataset.roleName;
+    const builtin = el.dataset.roleBuiltin === '1';
+
+    currentRoleKey = key;
+
+    // 更新侧边栏高亮
+    document.querySelectorAll('#roleTabList .nav-link').forEach(l => l.classList.remove('active'));
+    el.classList.add('active');
+
+    // 更新标题
+    document.getElementById('currentRoleName').textContent = name;
+    document.getElementById('currentRoleBadge').textContent = key;
+
+    // 切换表格列显示
+    document.querySelectorAll('.role-col').forEach(col => {
+        col.style.display = col.dataset.roleKey === key ? 'table-cell' : 'none';
+    });
+
+    // 显示/隐藏未保存标记
+    const card = document.getElementById('permissionCard');
+    if (unsavedRoles.has(key)) {
+        card.classList.add('has-unsaved');
+    } else {
+        card.classList.remove('has-unsaved');
+    }
+
+    // 更新侧边栏未保存标记
+    document.querySelectorAll('#roleTabList .nav-link').forEach(l => {
+        const lk = l.dataset.roleKey;
+        if (unsavedRoles.has(lk)) {
+            l.classList.add('has-unsaved');
+        } else {
+            l.classList.remove('has-unsaved');
+        }
+    });
+}
+
+function markUnsaved(roleKey) {
+    unsavedRoles.add(roleKey);
+    const card = document.getElementById('permissionCard');
+    if (currentRoleKey === roleKey) {
+        card.classList.add('has-unsaved');
+    }
+    // 更新侧边栏
+    document.querySelectorAll('#roleTabList .nav-link').forEach(l => {
+        if (l.dataset.roleKey === roleKey) {
+            l.classList.add('has-unsaved');
+        }
+    });
+}
+
+function toggleModule(header) {
+    const body = header.nextElementSibling;
+    const icon = header.querySelector('.fa-chevron-down, .fa-chevron-right');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        icon.classList.remove('fa-chevron-right');
+        icon.classList.add('fa-chevron-down');
+    } else {
+        body.style.display = 'none';
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-right');
+    }
+}
+
+function expandAll() {
+    document.querySelectorAll('.module-body').forEach(b => b.style.display = 'block');
+    document.querySelectorAll('.module-header .fa-chevron-right').forEach(i => {
+        i.classList.remove('fa-chevron-right');
+        i.classList.add('fa-chevron-down');
+    });
+}
+
+function collapseAll() {
+    document.querySelectorAll('.module-body').forEach(b => b.style.display = 'none');
+    document.querySelectorAll('.module-header .fa-chevron-down').forEach(i => {
+        i.classList.remove('fa-chevron-down');
+        i.classList.add('fa-chevron-right');
+    });
+}
+
+// 批量设置：某个模块下所有操作的范围
+function batchSetModuleScope(moduleKey, scope) {
+    document.querySelectorAll(`.scope-select[data-module="${moduleKey}"][data-role="${currentRoleKey}"]`).forEach(sel => {
+        sel.value = scope;
+    });
+    markUnsaved(currentRoleKey);
+}
+
+// 批量设置：某角色某列的范围（当前显示的列）
+function batchSetColumnScope(roleKey, scope) {
+    document.querySelectorAll(`.scope-select[data-role="${roleKey}"]`).forEach(sel => {
+        sel.value = scope;
+    });
+    markUnsaved(roleKey);
+}
+
+function collectPermissions(roleKey) {
+    const perms = {};
+    document.querySelectorAll(`.scope-select[data-role="${roleKey}"]`).forEach(sel => {
+        const mod = sel.dataset.module;
+        const action = sel.dataset.action;
+        const scope = sel.value;
+        if (!perms[mod]) perms[mod] = {};
+        perms[mod][action] = scope;
+    });
+    return perms;
+}
+
+function savePermissions() {
+    if (unsavedRoles.size === 0) {
+        alert('没有未保存的更改');
+        return;
+    }
+
+    // 获取 CSRF token（优先从 cookie 读取，兼容无表单页面）
+    function getCsrfToken() {
+        const input = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (input) return input.value;
+        const match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? match[1] : '';
+    }
+
+    const csrfToken = getCsrfToken();
+    if (!csrfToken) {
+        console.error('CSRF Token 未找到');
+    }
+
+    const promises = [];
+    unsavedRoles.forEach(roleKey => {
+        const perms = collectPermissions(roleKey);
+        console.log('准备保存权限:', roleKey, perms);
+        promises.push(
+            fetch('{% url "api_save_permissions" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({
+                    role_key: roleKey,
+                    permissions: perms,
+                }),
+            }).then(async r => {
+                const text = await r.text();
+                console.log('原始响应:', r.status, text);
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`服务器返回非 JSON 数据 (HTTP ${r.status}): ${text.substring(0, 200)}`);
+                }
+            })
+        );
+    });
+
+    Promise.all(promises).then(results => {
+        let allOk = true;
+        let msgs = [];
+        results.forEach(res => {
+            if (res.success) {
+                msgs.push(res.message);
+            } else {
+                allOk = false;
+                const detail = res.details ? '\n' + res.details.join('\n') : '';
+                msgs.push((res.error || '保存失败') + detail);
+            }
+        });
+
+        if (allOk) {
+            unsavedRoles.clear();
+            document.getElementById('permissionCard').classList.remove('has-unsaved');
+            document.querySelectorAll('#roleTabList .nav-link').forEach(l => l.classList.remove('has-unsaved'));
+            alert('权限配置保存成功，已即时生效');
+        } else {
+            alert('保存失败：\n' + msgs.join('\n'));
+        }
+    }).catch(err => {
+        console.error('保存异常:', err);
+        alert('保存出错：' + err.message);
+    });
+}
+
+// 页面加载时初始化
+window.addEventListener('DOMContentLoaded', () => {
+    // 默认选中第一个角色
+    const firstRole = document.querySelector('#roleTabList .nav-link');
+    if (firstRole) switchRole(firstRole);
+});
+</script>
+{% endblock %}

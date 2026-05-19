@@ -59,7 +59,7 @@
                     <td>{{ supply.item_category.name|default:"未分类" }}</td>
                     <td>{{ supply.specification|default:"-" }}</td>
                     <td>{{ supply.unit }}</td>
-                    <td><strong>{{ supply.quantity }}</strong></td>
+                    <td><strong>{{ supply.available_quantity }}</strong></td>
                     <td>{{ supply.safety_stock }}</td>
                     <td>
                         {% if supply.status == '正常' %}

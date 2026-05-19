@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
@@ -10,7 +11,8 @@ from decimal import Decimal
 
 from .models import (OfficeSupply, StockInApplication, StockInItem, StockOutRecord, 
                     StockOutOrder, StockOutItem, ITDevice, ComputerType, ReturnApplication, 
-                    ItemCategory, Department, Profile, ROLE_CHOICES, ROLE_GROUP_MAP)
+                    ItemCategory, Department, Profile, SystemRole,
+                    get_role_choices, get_role_group_map, get_role_display_name)
 from .forms import (OfficeSupplyForm, StockInApplicationForm, StockInApprovalForm,
                     StockOutForm, ReturnApplicationForm, ComputerTypeForm, ITDeviceForm, 
                     ExcelImportForm, ItemCategoryForm, DepartmentForm,
@@ -18,6 +20,8 @@ from .forms import (OfficeSupplyForm, StockInApplicationForm, StockInApprovalFor
 from .decorators import role_required
 from .utils import (get_user_role, get_visible_queryset, check_dept_head_exists, 
                     check_pending_before_role_change)
+
+import json
 
 from django.http import HttpResponse
 from openpyxl import Workbook, load_workbook
@@ -270,6 +274,7 @@ def supply_name_search(request):
                 'item_category_name': s.item_category.name if s.item_category else '',
                 'pinyin': py,
                 'quantity': s.quantity,
+                'available_quantity': s.available_quantity,
                 'unit': s.unit or '',
                 'price': str(s.price),
             })
@@ -416,23 +421,12 @@ def stockin_application_create(request):
                     'form': form, 'title': '入库单', 'action': '提交'
                 })
 
-            # 合并相同物品（防止重复物品行）
-            merged = {}
-            for item in items_data:
-                sid = str(item['supply_id'])
-                qty = int(item['quantity'])
-                if sid in merged:
-                    merged[sid]['quantity'] += qty
-                else:
-                    merged[sid] = {'quantity': qty, 'unit_price': item.get('unit_price', None)}
-            items_data = [{'supply_id': sid, 'quantity': m['quantity'], 'unit_price': m['unit_price']} for sid, m in merged.items()]
-
             # 创建申请单
             app = form.save(commit=False)
             app.applicant = request.user
             app.save()
 
-            # 创建明细
+            # 创建明细（保留每行独立记录）
             for item in items_data:
                 supply = OfficeSupply.objects.get(pk=item['supply_id'])
                 qty = int(item['quantity'])
@@ -443,6 +437,7 @@ def stockin_application_create(request):
                     unit=supply.unit,
                     location=supply.location or '',
                     supplier=supply.supplier or '',
+                    doc_no=item.get('doc_no', ''),
                 )
 
             messages.success(request, f'入库单 "{app.application_no}" 提交成功，共 {len(items_data)} 项物品！')
@@ -456,7 +451,8 @@ def stockin_application_create(request):
     return render(request, 'inventory/stockin_application_form.html', {
         'form': form,
         'title': '入库单',
-        'action': '提交'
+        'action': '提交',
+        'existing_items_json': '[]',
     })
 
 
@@ -505,17 +501,6 @@ def stockin_application_update(request, pk):
                 })
 
             form.save()
-            # 合并相同物品（防止重复物品行）
-            merged = {}
-            for item in items_data:
-                sid = str(item['supply_id'])
-                qty = int(item['quantity'])
-                if sid in merged:
-                    merged[sid]['quantity'] += qty
-                else:
-                    merged[sid] = {'quantity': qty, 'unit_price': item.get('unit_price', None)}
-            items_data = [{'supply_id': sid, 'quantity': m['quantity'], 'unit_price': m['unit_price']} for sid, m in merged.items()]
-
             # 重建明细
             application.items.all().delete()
             for item in items_data:
@@ -528,6 +513,7 @@ def stockin_application_update(request, pk):
                     unit=supply.unit,
                     location=supply.location or '',
                     supplier=supply.supplier or '',
+                    doc_no=item.get('doc_no', ''),
                 )
 
             messages.success(request, '入库单更新成功！')
@@ -538,11 +524,26 @@ def stockin_application_update(request, pk):
     else:
         form = StockInApplicationForm(instance=application)
 
+    # 编辑模式：回显已有明细
+    import json
+    existing_items = []
+    if application:
+        for item in application.items.select_related('supply').all():
+            existing_items.append({
+                'supply_id': item.supply_id,
+                'supply_name': item.supply.name + (f' ({item.supply.specification})' if item.supply.specification else ''),
+                'specification': item.specification or item.supply.specification or '',
+                'quantity': item.quantity,
+                'unit_price': float(item.unit_price),
+                'doc_no': item.doc_no or '',
+            })
+
     return render(request, 'inventory/stockin_application_form.html', {
         'form': form,
         'application': application,
         'title': '申请变更',
-        'action': '更新'
+        'action': '更新',
+        'existing_items_json': json.dumps(existing_items),
     })
 
 
@@ -579,9 +580,10 @@ def approval_list(request):
     """入出库审批（入库+出库合并列表）"""
     status_filter = request.GET.get('status', '待审批')
     type_filter = request.GET.get('type', '')
+    role = get_user_role(request.user)
 
-    # 入库单
-    stockin_qs = StockInApplication.objects.prefetch_related('items__supply').select_related('applicant', 'department').all()
+    # 入库单（按角色过滤）
+    stockin_qs = get_visible_queryset(request.user, StockInApplication).prefetch_related('items__supply').select_related('applicant', 'department')
     if status_filter:
         stockin_qs = stockin_qs.filter(status=status_filter)
     stockin_list = [{'obj': a, 'type': '入库', 'no': a.application_no, 'summary': a.get_items_summary(),
@@ -589,8 +591,8 @@ def approval_list(request):
                      'department': str(a.department) if a.department else '-', 'status': a.status,
                      'created_at': a.created_at, 'pk': a.pk} for a in stockin_qs]
 
-    # 出库单
-    stockout_qs = StockOutOrder.objects.prefetch_related('items__supply').select_related('operator', 'department').all()
+    # 出库单（按角色过滤）
+    stockout_qs = get_visible_queryset(request.user, StockOutOrder).prefetch_related('items__supply').select_related('operator', 'department')
     if status_filter:
         stockout_qs = stockout_qs.filter(status=status_filter)
     stockout_list = [{'obj': o, 'type': '出库', 'no': o.record_no, 'summary': o.get_items_summary(),
@@ -617,8 +619,17 @@ def approval_list(request):
 
 @login_required
 def approval_process(request, pk):
-    """审批处理（支持多物品入库）"""
+    """审批处理（支持多物品入库）——基于权限配置"""
+    from inventory.permissions import has_permission
+    role = get_user_role(request.user)
+    if not has_permission(role, 'stockin', 'approve'):
+        messages.error(request, '您没有入库审批权限')
+        return redirect('approval_list')
+    
     application = get_object_or_404(StockInApplication, pk=pk)
+    if application.status != '待审批':
+        messages.error(request, '该入库单已审批')
+        return redirect('approval_list')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -648,6 +659,7 @@ def approval_process(request, pk):
 @login_required
 def approval_process_stockout(request, pk):
     """二级审批处理（出库单）"""
+    from django.db.models import F
     order = get_object_or_404(
         StockOutOrder.objects.select_related('department', 'operator').prefetch_related('items__supply'),
         pk=pk
@@ -663,7 +675,9 @@ def approval_process_stockout(request, pk):
             if order.status != '待审批':
                 messages.error(request, '该出库单状态不符，无法审批')
                 return redirect('stockout_detail', pk=order.pk)
-            if role not in ('admin', 'dept_head'):
+            from inventory.permissions import get_data_scope
+            approve_scope = get_data_scope(role, 'stockout', 'approve')
+            if approve_scope not in ('all', 'dept'):
                 messages.error(request, '您没有部门长审批权限')
                 return redirect('stockout_detail', pk=order.pk)
             order.status = '待仓管审批'
@@ -677,19 +691,30 @@ def approval_process_stockout(request, pk):
             if order.status != '待审批':
                 messages.error(request, '该出库单状态不符')
                 return redirect('stockout_detail', pk=order.pk)
+            from inventory.permissions import get_data_scope
+            approve_scope = get_data_scope(role, 'stockout', 'approve')
+            if approve_scope not in ('all', 'dept'):
+                messages.error(request, '您没有部门长审批权限')
+                return redirect('stockout_detail', pk=order.pk)
+            # 驳回时释放锁定库存
+            for item in order.items.select_related('supply').all():
+                OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                    locked_quantity=F('locked_quantity') - item.quantity
+                )
             order.status = '已拒绝'
             order.dept_approver = request.user
             order.dept_approval_time = timezone.now()
             order.dept_approval_comment = comment
             order.save()
-            messages.info(request, f'出库单 "{order.record_no}" 已被部门长驳回')
+            messages.info(request, f'出库单 "{order.record_no}" 已被部门长驳回，已释放锁定库存')
 
         # 仓管二级审批
         elif action == 'wh_approve':
             if order.status != '待仓管审批':
                 messages.error(request, '该出库单状态不符，无法审批')
                 return redirect('stockout_detail', pk=order.pk)
-            if role not in ('admin', 'warehouse'):
+            from inventory.permissions import has_permission
+            if not has_permission(role, 'stockout', 'approve'):
                 messages.error(request, '您没有仓管审批权限')
                 return redirect('stockout_detail', pk=order.pk)
             # 校验库存
@@ -702,27 +727,38 @@ def approval_process_stockout(request, pk):
                     messages.error(request, err)
                 return redirect('stockout_detail', pk=order.pk)
 
-            # 扣减库存
+            # 审批通过：扣减实际库存并释放锁定（原子操作，使用update避免触发save中的F表达式比较）
             for item in order.items.select_related('supply').all():
-                item.supply.quantity -= item.quantity
-                item.supply.save()
+                OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                    quantity=F('quantity') - item.quantity,
+                    locked_quantity=F('locked_quantity') - item.quantity
+                )
             order.status = '已批准'
             order.approver = request.user
             order.approval_time = timezone.now()
             order.approval_comment = comment
             order.save()
-            messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库！')
+            messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库并扣减库存！')
 
         elif action == 'wh_reject':
             if order.status != '待仓管审批':
                 messages.error(request, '该出库单状态不符')
                 return redirect('stockout_detail', pk=order.pk)
+            from inventory.permissions import has_permission
+            if not has_permission(role, 'stockout', 'approve'):
+                messages.error(request, '您没有仓管审批权限')
+                return redirect('stockout_detail', pk=order.pk)
+            # 驳回时释放锁定库存
+            for item in order.items.select_related('supply').all():
+                OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                    locked_quantity=F('locked_quantity') - item.quantity
+                )
             order.status = '已拒绝'
             order.approver = request.user
             order.approval_time = timezone.now()
             order.approval_comment = comment
             order.save()
-            messages.info(request, f'出库单 "{order.record_no}" 已被仓管驳回')
+            messages.info(request, f'出库单 "{order.record_no}" 已被仓管驳回，已释放锁定库存')
 
         return redirect('stockout_detail', pk=order.pk)
 
@@ -762,19 +798,21 @@ def stockout_list(request):
 
 @login_required
 def stockout_create(request):
-    """出库登记（支持多物品）"""
+    """出库登记（支持多物品）——带库存锁定机制"""
+    import json
+    from django.db import transaction
+    from django.db.models import F
     if request.method == 'POST':
-        form = StockOutForm(request.POST)
-        # 解析前端传入的物品明细 JSON
+        form = StockOutForm(request.POST, user=request.user)
         items_json = request.POST.get('items_json', '[]')
-        import json
         try:
             items_data = json.loads(items_json)
         except (json.JSONDecodeError, TypeError):
             items_data = []
 
         if form.is_valid() and items_data:
-            # 校验库存
+            # 阶段1：合并相同物品并初步校验
+            merged = {}
             errors = []
             error_indices = []
             for i, item in enumerate(items_data):
@@ -795,14 +833,13 @@ def stockout_create(request):
                 elif qty <= 0:
                     errors.append(f'{supply.name}：出库数量必须大于 0')
                     error_indices.append(i)
-                elif qty > supply.quantity:
-                    errors.append(f'{supply.name} 库存不足！当前库存：{supply.quantity} {supply.unit}')
-                    error_indices.append(i)
+                else:
+                    sid = str(supply_id)
+                    merged[sid] = merged.get(sid, 0) + qty
 
             if errors:
                 for err in errors:
                     messages.error(request, err)
-                # 恢复已录入数据并标记错误行
                 restored = []
                 for item in items_data:
                     supply_id = item.get('supply_id')
@@ -814,7 +851,7 @@ def stockout_create(request):
                             'name': str(supply),
                             'specification': supply.specification or '',
                             'quantity': qty,
-                            'stock': supply.quantity,
+                            'stock': supply.available_quantity,
                             'unit': supply.unit or '',
                         })
                     except OfficeSupply.DoesNotExist:
@@ -832,31 +869,48 @@ def stockout_create(request):
                     'error_indices_json': json.dumps(error_indices),
                 })
 
-            # 合并相同物品的数量（防止重复物品行）
-            merged = {}
-            for item in items_data:
-                sid = str(item['supply_id'])
-                qty = int(item['quantity'])
-                merged[sid] = merged.get(sid, 0) + qty
-            items_data = [{'supply_id': sid, 'quantity': qty} for sid, qty in merged.items()]
+            # 阶段2：原子性校验可用库存并锁定（防止并发超卖）
+            lock_errors = []
+            try:
+                with transaction.atomic():
+                    for sid, qty in list(merged.items()):
+                        supply = OfficeSupply.objects.select_for_update().get(pk=int(sid))
+                        if qty > supply.available_quantity:
+                            lock_errors.append(
+                                f'{supply.name} 可用库存不足！可用：{supply.available_quantity} {supply.unit}，需要：{qty}'
+                            )
+                    if lock_errors:
+                        raise ValueError('库存锁定失败')
 
-            # 创建出库单（待审批状态，暂不扣减库存）
-            order = form.save(commit=False)
-            order.operator = request.user
-            order.status = '待审批'
-            order.save()
+                    # 全部校验通过，创建出库单并锁定库存
+                    order = form.save(commit=False)
+                    order.operator = request.user
+                    order.status = '待审批'
+                    order.save()
 
-            # 创建明细（不扣减库存，审批通过后再扣减）
-            for item in items_data:
-                supply = OfficeSupply.objects.get(pk=item['supply_id'])
-                qty = int(item['quantity'])
-                StockOutItem.objects.create(
-                    order=order, supply=supply, quantity=qty,
-                    specification=supply.specification or '',
-                    unit=supply.unit,
-                    location=supply.location or '',
-                    supplier=supply.supplier or '',
-                )
+                    for sid, qty in merged.items():
+                        supply = OfficeSupply.objects.get(pk=int(sid))
+                        # 创建明细
+                        StockOutItem.objects.create(
+                            order=order, supply=supply, quantity=qty,
+                            specification=supply.specification or '',
+                            unit=supply.unit,
+                            location=supply.location or '',
+                            supplier=supply.supplier or '',
+                        )
+                        # 锁定库存（原子加法，使用update避免触发save中的F表达式比较）
+                        OfficeSupply.objects.filter(pk=supply.pk).update(
+                            locked_quantity=F('locked_quantity') + qty
+                        )
+
+            except ValueError:
+                for err in lock_errors:
+                    messages.error(request, err)
+                return render(request, 'inventory/stockout_form.html', {
+                    'form': form, 'title': '出库登记',
+                    'restored_items_json': '[]',
+                    'error_indices_json': '[]',
+                })
 
             messages.success(request, f'出库单 "{order.record_no}" 已提交，等待审批！')
             return redirect('stockout_list')
@@ -864,7 +918,32 @@ def stockout_create(request):
             if not items_data:
                 messages.error(request, '请至少添加一项出库物品')
     else:
-        form = StockOutForm()
+        form = StockOutForm(user=request.user)
+        # 快速出库：从入库单预填充物品
+        from_stockin_id = request.GET.get('from_stockin')
+        if from_stockin_id:
+            try:
+                stockin = StockInApplication.objects.prefetch_related('items__supply').get(pk=int(from_stockin_id))
+                if stockin.status == '已批准':
+                    restored = []
+                    for item in stockin.items.all():
+                        supply = item.supply
+                        restored.append({
+                            'supply_id': supply.id,
+                            'name': supply.name,
+                            'specification': supply.specification or '',
+                            'quantity': item.quantity,
+                            'stock': supply.available_quantity,
+                            'unit': supply.unit or '',
+                        })
+                    return render(request, 'inventory/stockout_form.html', {
+                        'form': form,
+                        'title': '出库登记',
+                        'restored_items_json': json.dumps(restored, ensure_ascii=False),
+                        'error_indices_json': '[]',
+                    })
+            except (ValueError, StockInApplication.DoesNotExist):
+                pass
 
     return render(request, 'inventory/stockout_form.html', {
         'form': form,
@@ -886,25 +965,32 @@ def stockout_detail(request, pk):
     role = get_user_role(request.user)
     can_dept_approve = role in ('admin', 'dept_head') and order.status == '待审批'
     can_warehouse_approve = role in ('admin', 'warehouse') and order.status == '待仓管审批'
+    # 查询关联的归还记录
+    return_applications = order.returns.select_related('supply', 'department', 'operator', 'approver').order_by('-created_at')
     return render(request, 'inventory/stockout_detail.html', {
         'order': order,
         'can_dept_approve': can_dept_approve,
         'can_warehouse_approve': can_warehouse_approve,
+        'return_applications': return_applications,
     })
 
 
 @login_required
 def stockout_edit(request, pk):
-    """出库单编辑（仅待审批状态可编辑）"""
+    """出库单编辑（仅待审批/待仓管审批/已拒绝状态，且仅操作员本人或管理员）"""
     order = get_object_or_404(StockOutOrder, pk=pk)
-    if order.status not in ('待审批', '待仓管审批'):
-        messages.error(request, '只有待审批或待仓管审批的出库单才能修改！')
+    role = get_user_role(request.user)
+    if role != 'admin' and order.operator != request.user:
+        messages.error(request, '您只能编辑自己创建的出库单')
+        return redirect('stockout_list')
+    if order.status not in ('待审批', '待仓管审批', '已拒绝'):
+        messages.error(request, '只有待审批、待仓管审批或已拒绝的出库单才能修改！')
         return redirect('stockout_list')
 
     import json
 
     if request.method == 'POST':
-        form = StockOutForm(request.POST, instance=order)
+        form = StockOutForm(request.POST, instance=order, user=request.user)
         items_json = request.POST.get('items_json', '[]')
         try:
             items_data = json.loads(items_json)
@@ -912,7 +998,11 @@ def stockout_edit(request, pk):
             items_data = []
 
         if form.is_valid() and items_data:
-            # 校验物品
+            from django.db import transaction
+            from django.db.models import F
+
+            # 阶段1：合并新明细
+            merged_new = {}
             errors = []
             for item in items_data:
                 supply_id = item.get('supply_id')
@@ -929,6 +1019,9 @@ def stockout_edit(request, pk):
                     errors.append(f'{supply.code} - {supply.name} 已停用，禁止出库')
                 elif qty <= 0:
                     errors.append(f'{supply.name}：出库数量必须大于 0')
+                else:
+                    sid = str(supply_id)
+                    merged_new[sid] = merged_new.get(sid, 0) + qty
 
             if errors:
                 for err in errors:
@@ -939,23 +1032,53 @@ def stockout_edit(request, pk):
                     'error_indices_json': '[]',
                 })
 
-            form.save()
-            # 重建明细
-            order.items.all().delete()
-            merged = {}
-            for item in items_data:
-                sid = str(item['supply_id'])
-                qty = int(item['quantity'])
-                merged[sid] = merged.get(sid, 0) + qty
-            for sid, qty in merged.items():
-                supply = OfficeSupply.objects.get(pk=sid)
-                StockOutItem.objects.create(
-                    order=order, supply=supply, quantity=qty,
-                    specification=supply.specification or '',
-                    unit=supply.unit,
-                    location=supply.location or '',
-                    supplier=supply.supplier or '',
-                )
+            # 阶段2：原子操作——释放旧锁定、校验新可用库存、加新锁定
+            try:
+                with transaction.atomic():
+                    # 2a. 释放旧明细的锁定库存（使用update避免触发save中的F表达式比较）
+                    old_items = list(order.items.select_related('supply').all())
+                    for item in old_items:
+                        OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                            locked_quantity=F('locked_quantity') - item.quantity
+                        )
+
+                    # 2b. 校验新明细的可用库存（注意：释放旧锁定后需要重新查询）
+                    for sid, qty in merged_new.items():
+                        supply = OfficeSupply.objects.select_for_update().get(pk=int(sid))
+                        if qty > supply.available_quantity:
+                            raise ValueError(
+                                f'{supply.name} 可用库存不足！可用：{supply.available_quantity} {supply.unit}，需要：{qty}'
+                            )
+
+                    # 2c. 全部通过，保存表单并重建明细
+                    form.save()
+                    order.items.all().delete()
+                    for sid, qty in merged_new.items():
+                        supply = OfficeSupply.objects.get(pk=int(sid))
+                        StockOutItem.objects.create(
+                            order=order, supply=supply, quantity=qty,
+                            specification=supply.specification or '',
+                            unit=supply.unit,
+                            location=supply.location or '',
+                            supplier=supply.supplier or '',
+                        )
+                        # 锁定新库存
+                        OfficeSupply.objects.filter(pk=supply.pk).update(
+                            locked_quantity=F('locked_quantity') + qty
+                        )
+
+            except ValueError as e:
+                # 回滚后需要重新锁定旧库存（因为事务已回滚）
+                for item in old_items:
+                    OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                        locked_quantity=F('locked_quantity') + item.quantity
+                    )
+                messages.error(request, str(e))
+                return render(request, 'inventory/stockout_form.html', {
+                    'form': form, 'title': '修改出库单',
+                    'restored_items_json': '[]',
+                    'error_indices_json': '[]',
+                })
 
             messages.success(request, f'出库单 "{order.record_no}" 更新成功！')
             return redirect('stockout_list')
@@ -963,7 +1086,7 @@ def stockout_edit(request, pk):
             if not items_data:
                 messages.error(request, '请至少添加一项出库物品')
     else:
-        form = StockOutForm(instance=order)
+        form = StockOutForm(instance=order, user=request.user)
 
     # 预填充已有明细
     existing_items = []
@@ -973,7 +1096,7 @@ def stockout_edit(request, pk):
             'name': str(item.supply),
             'specification': item.supply.specification or '',
             'quantity': item.quantity,
-            'stock': item.supply.quantity,
+            'stock': item.supply.available_quantity,
             'unit': item.supply.unit or '',
         })
 
@@ -987,14 +1110,25 @@ def stockout_edit(request, pk):
 
 @login_required
 def stockout_delete(request, pk):
-    """出库单删除（仅待审批状态可删除）"""
+    """出库单删除（仅待审批/已拒绝状态可删除，且仅操作员本人或管理员）"""
+    from django.db.models import F
     order = get_object_or_404(StockOutOrder, pk=pk)
-    if order.status != '待审批':
-        messages.error(request, '只有待审批的出库单才能删除！')
+    role = get_user_role(request.user)
+    if role != 'admin' and order.operator != request.user:
+        messages.error(request, '您只能删除自己创建的出库单')
+        return redirect('stockout_list')
+    if order.status not in ('待审批', '已拒绝'):
+        messages.error(request, '只有待审批或已拒绝的出库单才能删除！')
         return redirect('stockout_list')
 
     if request.method == 'POST':
         record_no = order.record_no
+        # 释放锁定库存（待审批/已拒绝状态的出库单才有锁定）
+        if order.status in ('待审批', '待仓管审批'):
+            for item in order.items.select_related('supply').all():
+                OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                    locked_quantity=F('locked_quantity') - item.quantity
+                )
         order.delete()
         messages.success(request, f'出库单 "{record_no}" 已删除！')
         return redirect('stockout_list')
@@ -1005,22 +1139,95 @@ def stockout_delete(request, pk):
 @login_required
 def return_application_list(request):
     """归还申请列表"""
-    returns = ReturnApplication.objects.select_related('supply').order_by('-created_at')
+    returns = ReturnApplication.objects.select_related('supply', 'stockout_order', 'operator').order_by('-created_at')
     paginator = Paginator(returns, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    return render(request, 'inventory/return_list.html', {'page_obj': page_obj})
+    role = get_user_role(request.user)
+    return render(request, 'inventory/return_list.html', {
+        'page_obj': page_obj,
+        'can_approve': role in ('admin', 'warehouse'),
+    })
 
 
 @login_required
 def return_application_create(request):
-    """归还申请"""
+    """归还申请（基于已审批出库单）"""
+    # 获取已审批通过的出库单，并过滤掉所有物品均已完全归还的出库单
+    approved_orders_all = StockOutOrder.objects.filter(
+        status='已批准'
+    ).select_related('department').prefetch_related('items__supply').order_by('-created_at')
+
+    approved_orders = []
+    for order in approved_orders_all:
+        available_items = []
+        for item in order.items.all():
+            already_returned = ReturnApplication.objects.filter(
+                stockout_order=order, supply=item.supply, status__in=['待审批', '已批准']
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            remaining = item.quantity - already_returned
+            if remaining > 0:
+                available_items.append({
+                    'id': str(item.supply_id),
+                    'name': item.supply.name,
+                    'qty': item.quantity,
+                    'remaining': remaining,
+                })
+        if available_items:
+            order.available_items_json = json.dumps(available_items)
+            approved_orders.append(order)
+
     if request.method == 'POST':
-        form = ReturnApplicationForm(request.POST)
-        if form.is_valid():
-            ret = form.save(commit=False)
-            ret.operator = request.user
-            # 快照物品属性
+        order_id = request.POST.get('stockout_order')
+        supply_id = request.POST.get('supply')
+        quantity = int(request.POST.get('quantity', 0))
+        returner = request.POST.get('returner', '').strip()
+        department_id = request.POST.get('department', '')
+        return_date = request.POST.get('return_date', '')
+        reason = request.POST.get('reason', '')
+        
+        errors = []
+        if not order_id:
+            errors.append('请选择关联出库单')
+        if not supply_id:
+            errors.append('请选择归还物品')
+        if quantity <= 0:
+            errors.append('归还数量必须大于0')
+        if not returner:
+            errors.append('请填写归还人')
+        if not return_date:
+            errors.append('请选择归还日期')
+        
+        # 校验归还数量不超过出库数量
+        if order_id and supply_id and quantity > 0:
+            try:
+                order = StockOutOrder.objects.get(pk=order_id)
+                item = StockOutItem.objects.get(order=order, supply_id=supply_id)
+                # 计算已归还数量
+                already_returned = ReturnApplication.objects.filter(
+                    stockout_order=order, supply_id=supply_id, status__in=['待审批', '已批准']
+                ).aggregate(total=Sum('quantity'))['total'] or 0
+                remaining = item.quantity - already_returned
+                if quantity > remaining:
+                    errors.append(f'归还数量不能超过可归还数量 {remaining}')
+            except (StockOutOrder.DoesNotExist, StockOutItem.DoesNotExist):
+                errors.append('出库单或物品不存在')
+        
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+        else:
+            ret = ReturnApplication(
+                stockout_order=order,
+                supply_id=supply_id,
+                quantity=quantity,
+                returner=returner,
+                department_id=department_id if department_id else None,
+                return_date=return_date,
+                reason=reason,
+                operator=request.user,
+                status='待审批',
+            )
             supply = ret.supply
             ret.specification = supply.specification or ''
             ret.unit = supply.unit
@@ -1028,17 +1235,50 @@ def return_application_create(request):
             ret.supplier = supply.supplier or ''
             ret.save()
             
-            # 归还自动增加库存
+            messages.success(request, f'归还申请 "{ret.return_no}" 提交成功，待仓管审批！')
+            return redirect('return_list')
+    
+    return render(request, 'inventory/return_form.html', {
+        'approved_orders': approved_orders,
+        'title': '归还申请',
+    })
+
+
+@login_required
+def return_approval(request, pk):
+    """仓管审批归还"""
+    role = get_user_role(request.user)
+    if role not in ('admin', 'warehouse'):
+        messages.error(request, '您没有审批归还的权限')
+        return redirect('return_list')
+    
+    ret = get_object_or_404(ReturnApplication, pk=pk)
+    if ret.status != '待审批':
+        messages.error(request, '该归还申请已审批')
+        return redirect('return_list')
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        comment = request.POST.get('comment', '')
+        
+        if action == 'approve':
+            ret.status = '已批准'
+            # 审批通过后增加库存
             supply = ret.supply
             supply.quantity += ret.quantity
             supply.save()
-            
-            messages.success(request, f'归还申请 "{ret.return_no}" 提交成功，库存已更新！')
-            return redirect('return_list')
-    else:
-        form = ReturnApplicationForm()
+            messages.success(request, f'归还申请 "{ret.return_no}" 已批准，库存已更新！')
+        elif action == 'reject':
+            ret.status = '已拒绝'
+            messages.info(request, f'归还申请 "{ret.return_no}" 已拒绝')
+        
+        ret.approver = request.user
+        ret.approval_time = timezone.now()
+        ret.approval_comment = comment
+        ret.save()
+        return redirect('return_list')
     
-    return render(request, 'inventory/return_form.html', {'form': form, 'title': '归还申请'})
+    return render(request, 'inventory/return_approval.html', {'ret': ret})
 
 
 # ==================== IT设备管理 ====================
@@ -1982,17 +2222,18 @@ def user_list(request):
     # 角色筛选
     role_filter = request.GET.get('role', '')
     if role_filter:
-        users = users.filter(groups__name=ROLE_GROUP_MAP.get(role_filter, ''))
-    
+        group_map = get_role_group_map()
+        users = users.filter(groups__name=group_map.get(role_filter, ''))
+
     paginator = Paginator(users, 20)
     page = request.GET.get('page')
     users_page = paginator.get_page(page)
-    
+
     return render(request, 'inventory/user_list.html', {
         'users': users_page,
         'q': q,
         'role_filter': role_filter,
-        'role_choices': ROLE_CHOICES,
+        'role_choices': get_role_choices(),
     })
 
 
@@ -2013,6 +2254,21 @@ def user_create(request):
             messages.error(request, f'用户名 {username} 已存在')
             return redirect('user_create')
         
+        # 仅非管理员/仓管员要求部门必填
+        if role not in ('admin', 'warehouse') and not dept_id:
+            messages.error(request, '所属部门为必填项')
+            return redirect('user_create')
+        
+        # 部门长唯一性检查
+        if role == 'dept_head' and dept_id:
+            dept = Department.objects.get(pk=dept_id)
+            existing = check_dept_head_exists(dept)
+            if existing:
+                p = getattr(existing, 'profile', None)
+                n = p.name if p and p.name else existing.username
+                messages.error(request, f'该部门已有部门长（{n}），请先更换角色再创建新部门长')
+                return redirect('user_create')
+        
         user = User.objects.create_user(username=username, password=password)
         profile = user.profile
         profile.name = name
@@ -2026,17 +2282,18 @@ def user_create(request):
         profile.save()
         
         # 分配角色组
-        group_name = ROLE_GROUP_MAP.get(role, '普通用户')
+        group_map = get_role_group_map()
+        group_name = group_map.get(role, '普通用户')
         group = Group.objects.get_or_create(name=group_name)[0]
         user.groups.set([group])
-        
+
         messages.success(request, f'用户 {username} 创建成功')
         return redirect('user_list')
-    
+
     departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
     return render(request, 'inventory/user_form.html', {
         'departments': departments,
-        'role_choices': ROLE_CHOICES,
+        'role_choices': get_role_choices(),
         'action': '创建',
     })
 
@@ -2052,6 +2309,12 @@ def user_edit(request, pk):
         profile.name = request.POST.get('name', '').strip()
         profile.phone = request.POST.get('phone', '').strip()
         dept_id = request.POST.get('department', '')
+        
+        # 仅非管理员/仓管员要求部门必填
+        if profile.role not in ('admin', 'warehouse') and not dept_id:
+            messages.error(request, '所属部门为必填项')
+            return redirect('user_edit', pk=pk)
+        
         profile.department = Department.objects.get(pk=dept_id) if dept_id else None
         profile.save()
         
@@ -2066,7 +2329,7 @@ def user_edit(request, pk):
         'edit_user': user,
         'profile': profile,
         'departments': departments,
-        'role_choices': ROLE_CHOICES,
+        'role_choices': get_role_choices(),
         'action': '编辑',
     })
 
@@ -2080,6 +2343,15 @@ def user_disable(request, pk):
     if user == request.user:
         messages.error(request, '不能停用自己的账号')
         return redirect('user_list')
+    
+    # 停用时检查待处理数据
+    if user.is_active:
+        can_disable, pending_items = check_pending_before_role_change(user)
+        if not can_disable:
+            messages.error(request, f'无法停用用户 {user.username}，该用户有以下待处理数据：')
+            for item in pending_items:
+                messages.warning(request, item)
+            return redirect('user_list')
     
     user.is_active = not user.is_active
     user.save()
@@ -2141,37 +2413,46 @@ def user_role_assign(request, pk):
                     return render(request, 'inventory/user_role_assign.html', {
                         'target_user': user,
                         'existing_head': {'name': name_ex, 'username': existing_head.username},
-                        'role_choices': ROLE_CHOICES,
+                        'role_choices': get_role_choices(),
                         'departments': Department.objects.filter(is_active=True).order_by('sort_order', 'code'),
                         'new_role': new_role,
                         'new_dept_id': new_dept_id,
                     })
                 else:
+                    # 降级旧部门长前先检查其待处理数据
+                    can_downgrade, pending_items = check_pending_before_role_change(existing_head)
+                    if not can_downgrade:
+                        messages.error(request, f'无法替换部门长，当前部门长 {existing_head.username} 有以下待处理数据：')
+                        for item in pending_items:
+                            messages.warning(request, item)
+                        return redirect('user_role_assign', pk=pk)
                     # 降级旧部门长
-                    old_group = Group.objects.get(name='部门长')
+                    group_map = get_role_group_map()
+                    old_group = Group.objects.get(name=group_map.get('dept_head', '部门长'))
                     existing_head.groups.remove(old_group)
-                    staff_group = Group.objects.get(name='普通用户')
+                    staff_group = Group.objects.get(name=group_map.get('staff', '普通用户'))
                     existing_head.groups.add(staff_group)
-        
+
         # 更新部门
         profile = user.profile
         if new_dept_id:
             profile.department = Department.objects.get(pk=new_dept_id)
         profile.applied_role = new_role
         profile.save()
-        
+
         # 更新角色组
-        group_name = ROLE_GROUP_MAP.get(new_role, '普通用户')
+        group_map = get_role_group_map()
+        group_name = group_map.get(new_role, '普通用户')
         group = Group.objects.get_or_create(name=group_name)[0]
         user.groups.set([group])
-        
-        messages.success(request, f'已将用户 {user.username} 的角色设置为「{dict(ROLE_CHOICES).get(new_role, new_role)}」')
+
+        messages.success(request, f'已将用户 {user.username} 的角色设置为「{get_role_display_name(new_role)}」')
         return redirect('user_list')
-    
+
     departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
     return render(request, 'inventory/user_role_assign.html', {
         'target_user': user,
-        'role_choices': ROLE_CHOICES,
+        'role_choices': get_role_choices(),
         'departments': departments,
     })
 
@@ -2205,6 +2486,14 @@ def user_approve(request, pk):
             role = request.POST.get('role', profile.applied_role)
             dept_id = request.POST.get('department', '')
             
+            # 角色变更前检查待处理数据
+            can_change, pending_items = check_pending_before_role_change(user)
+            if not can_change:
+                messages.error(request, f'无法变更角色，该用户有以下待处理数据：')
+                for item in pending_items:
+                    messages.warning(request, item)
+                return redirect('user_approve', pk=pk)
+            
             # 部门长唯一性检查
             if role == 'dept_head' and dept_id:
                 dept = Department.objects.get(pk=dept_id)
@@ -2217,15 +2506,23 @@ def user_approve(request, pk):
                         return render(request, 'inventory/user_approve.html', {
                             'target_user': user,
                             'existing_head': {'name': name_ex, 'username': existing_head.username},
-                            'role_choices': ROLE_CHOICES,
+                            'role_choices': get_role_choices(),
                             'departments': Department.objects.filter(is_active=True).order_by('sort_order', 'code'),
                             'selected_role': role,
                             'selected_dept': dept_id,
                         })
                     else:
-                        old_group = Group.objects.get(name='部门长')
+                        # 降级旧部门长前先检查其待处理数据
+                        can_downgrade, pending_items = check_pending_before_role_change(existing_head)
+                        if not can_downgrade:
+                            messages.error(request, f'无法替换部门长，当前部门长 {existing_head.username} 有以下待处理数据：')
+                            for item in pending_items:
+                                messages.warning(request, item)
+                            return redirect('user_approve', pk=pk)
+                        group_map = get_role_group_map()
+                        old_group = Group.objects.get(name=group_map.get('dept_head', '部门长'))
                         existing_head.groups.remove(old_group)
-                        staff_group = Group.objects.get(name='普通用户')
+                        staff_group = Group.objects.get(name=group_map.get('staff', '普通用户'))
                         existing_head.groups.add(staff_group)
             
             profile.applied_role = role
@@ -2238,7 +2535,7 @@ def user_approve(request, pk):
             user.save()
             
             # 分配角色组
-            group_name = ROLE_GROUP_MAP.get(role, '普通用户')
+            group_name = get_role_group_map().get(role, '普通用户')
             group = Group.objects.get_or_create(name=group_name)[0]
             user.groups.set([group])
             
@@ -2254,18 +2551,20 @@ def user_approve(request, pk):
     departments = Department.objects.filter(is_active=True).order_by('sort_order', 'code')
     return render(request, 'inventory/user_approve.html', {
         'target_user': user,
-        'role_choices': ROLE_CHOICES,
+        'role_choices': get_role_choices(),
         'departments': departments,
     })
 
 
 @role_required('admin')
 def permission_management(request):
-    """权限管理总览"""
+    """权限管理总览（旧页面，保留兼容）"""
     from django.contrib.auth.models import User, Group
+    from inventory.permissions import get_all_roles_permissions
+
     groups = Group.objects.all()
     role_data = []
-    for role_key, role_name in ROLE_CHOICES:
+    for role_key, role_name in get_role_choices():
         group = Group.objects.filter(name=role_name).first()
         users = group.user_set.select_related('profile', 'profile__department').all() if group else []
         role_data.append({
@@ -2274,10 +2573,290 @@ def permission_management(request):
             'users': users,
             'count': users.count(),
         })
-    
+
     return render(request, 'inventory/permissions.html', {
         'role_data': role_data,
     })
+
+
+# ========== 角色与权限配置（可配置化） ==========
+
+@role_required('admin')
+def role_list(request):
+    """角色列表与权限配置主页面"""
+    from inventory.models import SystemRole, RolePermission
+    from inventory.permissions import get_permission_matrix
+
+    roles = SystemRole.objects.filter(is_active=True).order_by('sort_order', 'key')
+    matrix = get_permission_matrix()
+
+    scope_choices = [{'key': k, 'name': n} for k, n in RolePermission.SCOPE_CHOICES]
+
+    return render(request, 'inventory/role_list.html', {
+        'roles': roles,
+        'matrix': matrix,
+        'scope_choices': scope_choices,
+    })
+
+
+@role_required('admin')
+def role_create(request):
+    """创建新角色"""
+    from django.contrib.auth.models import Group
+    from inventory.models import SystemRole, RolePermission
+    from inventory.permissions import BUILTIN_PERMISSIONS, clear_permission_cache
+
+    if request.method == 'POST':
+        key = request.POST.get('key', '').strip()
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        copy_from = request.POST.get('copy_from', '')
+
+        # 校验
+        if not key or not name:
+            messages.error(request, '角色标识和名称不能为空')
+            return redirect('role_create')
+        if SystemRole.objects.filter(key=key).exists():
+            messages.error(request, f'角色标识 "{key}" 已存在')
+            return redirect('role_create')
+
+        # 创建角色
+        role = SystemRole.objects.create(
+            key=key,
+            name=name,
+            description=description,
+            is_builtin=False,
+            is_active=True,
+            sort_order=SystemRole.objects.count(),
+        )
+
+        # 同步创建 Django Group
+        Group.objects.get_or_create(name=name)
+
+        # 复制权限
+        source_perms = BUILTIN_PERMISSIONS.get(copy_from, {})
+        if not source_perms and copy_from:
+            try:
+                src_role = SystemRole.objects.get(key=copy_from)
+                src_qs = RolePermission.objects.filter(role=src_role, is_enabled=True)
+                source_perms = {}
+                for p in src_qs:
+                    source_perms.setdefault(p.module, {})[p.action] = p.scope
+            except SystemRole.DoesNotExist:
+                source_perms = BUILTIN_PERMISSIONS.get('staff', {})
+
+        if not source_perms:
+            source_perms = BUILTIN_PERMISSIONS.get('staff', {})
+
+        for module, actions in source_perms.items():
+            for action, scope in actions.items():
+                RolePermission.objects.create(
+                    role=role,
+                    module=module,
+                    action=action,
+                    scope=scope,
+                    is_enabled=True,
+                )
+
+        clear_permission_cache()
+        messages.success(request, f'角色 "{name}" 创建成功')
+        return redirect('role_list')
+
+    # GET：展示可选的复制源角色
+    builtin_roles = SystemRole.objects.filter(is_active=True).order_by('sort_order', 'key')
+    return render(request, 'inventory/role_form.html', {
+        'builtin_roles': builtin_roles,
+        'action': '创建',
+    })
+
+
+@role_required('admin')
+def role_edit(request, pk):
+    """编辑角色信息（不修改权限，权限在 role_list 页面配置）"""
+    from inventory.models import SystemRole
+    from inventory.permissions import clear_permission_cache
+
+    role = get_object_or_404(SystemRole, pk=pk)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '').strip()
+        is_active = 'is_active' in request.POST
+        sort_order = request.POST.get('sort_order', '0').strip()
+
+        if not name:
+            messages.error(request, '角色名称不能为空')
+            return redirect('role_edit', pk=pk)
+
+        # 内置角色不允许修改标识和停用
+        if role.is_builtin:
+            is_active = True
+
+        role.name = name
+        role.description = description
+        role.is_active = is_active
+        role.sort_order = int(sort_order) if sort_order.isdigit() else 0
+        role.save()
+
+        # 同步更新 Django Group 名称
+        from django.contrib.auth.models import Group
+        old_group_name = get_role_group_map().get(role.key, name)
+        group = Group.objects.filter(name=old_group_name).first()
+        if group:
+            group.name = name
+            group.save()
+
+        clear_permission_cache()
+        messages.success(request, f'角色 "{name}" 已更新')
+        return redirect('role_list')
+
+    return render(request, 'inventory/role_form.html', {
+        'role': role,
+        'action': '编辑',
+    })
+
+
+@role_required('admin')
+def role_delete(request, pk):
+    """删除角色"""
+    from inventory.models import SystemRole
+    from inventory.permissions import clear_permission_cache
+
+    role = get_object_or_404(SystemRole, pk=pk)
+
+    if role.is_builtin:
+        messages.error(request, '内置角色不能删除')
+        return redirect('role_list')
+
+    # 检查是否有用户关联此角色
+    from django.contrib.auth.models import User
+    group_name = get_role_group_map().get(role.key, role.name)
+    group = User.groups.through.objects.filter(
+        group__name=group_name
+    ).exists()
+    if group:
+        messages.error(request, f'仍有用户属于角色 "{role.name}"，无法删除')
+        return redirect('role_list')
+
+    role.delete()
+    clear_permission_cache()
+    messages.success(request, f'角色 "{role.name}" 已删除')
+    return redirect('role_list')
+
+
+@role_required('admin')
+def api_role_permissions(request, role_key):
+    """API：获取某角色的权限配置"""
+    from inventory.permissions import get_role_permissions
+    from inventory.models import RolePermission
+
+    perms = get_role_permissions(role_key)
+    # 补充 action 和 module 的中文名称
+    module_map = dict(RolePermission.MODULE_CHOICES)
+    action_map = dict(RolePermission.ACTION_CHOICES)
+
+    enriched = {}
+    for module, actions in perms.items():
+        enriched[module] = {
+            'name': module_map.get(module, module),
+            'actions': {
+                action: {
+                    'scope': scope,
+                    'action_name': action_map.get(action, action),
+                }
+                for action, scope in actions.items()
+            }
+        }
+
+    return JsonResponse({
+        'role_key': role_key,
+        'permissions': enriched,
+    })
+
+
+@csrf_exempt
+@role_required('admin')
+def api_save_permissions(request):
+    """API：批量保存权限配置"""
+    import json
+    import logging
+    from inventory.models import SystemRole, RolePermission
+    from inventory.permissions import clear_permission_cache
+
+    logger = logging.getLogger(__name__)
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': '仅支持 POST 请求'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError as e:
+        logger.error(f'JSON 解析错误: {e}, body={request.body[:200]}')
+        return JsonResponse({'success': False, 'error': f'无效的 JSON 数据: {e}'}, status=400)
+
+    role_key = data.get('role_key')
+    permissions = data.get('permissions', {})
+
+    logger.info(f'保存权限请求: role_key={role_key}, permissions_keys={list(permissions.keys())}')
+
+    if not role_key:
+        return JsonResponse({'success': False, 'error': '缺少角色标识'}, status=400)
+
+    if not permissions:
+        return JsonResponse({'success': False, 'error': '权限数据为空，请至少修改一项权限'}, status=400)
+
+    try:
+        role = SystemRole.objects.get(key=role_key)
+    except SystemRole.DoesNotExist:
+        return JsonResponse({'success': False, 'error': f'角色 "{role_key}" 不存在'}, status=404)
+
+    # 校验权限数据格式
+    valid_modules = [m[0] for m in RolePermission.MODULE_CHOICES]
+    valid_actions = [a[0] for a in RolePermission.ACTION_CHOICES]
+    valid_scopes = [s[0] for s in RolePermission.SCOPE_CHOICES]
+
+    errors = []
+    for module, actions in permissions.items():
+        if module not in valid_modules:
+            errors.append(f'无效模块: {module}')
+            continue
+        if not isinstance(actions, dict):
+            errors.append(f'模块 {module} 的操作数据格式错误')
+            continue
+        for action, scope in actions.items():
+            if action not in valid_actions:
+                errors.append(f'无效操作: {action}')
+            if scope not in valid_scopes:
+                errors.append(f'无效范围 "{scope}" (操作: {action})')
+
+    if errors:
+        logger.error(f'权限数据校验失败: {errors}')
+        return JsonResponse({'success': False, 'error': '数据校验失败', 'details': errors}, status=400)
+
+    try:
+        updated = 0
+        for module, actions in permissions.items():
+            for action, scope in actions.items():
+                is_enabled = scope != 'none'
+                perm, created = RolePermission.objects.update_or_create(
+                    role=role,
+                    module=module,
+                    action=action,
+                    defaults={'scope': scope, 'is_enabled': is_enabled}
+                )
+                updated += 1
+
+        clear_permission_cache()
+        logger.info(f'权限保存成功: role={role_key}, updated={updated}')
+
+        return JsonResponse({
+            'success': True,
+            'message': f'已更新 {updated} 条权限配置',
+            'role_key': role_key,
+        })
+    except Exception as e:
+        logger.exception(f'权限保存异常: role={role_key}')
+        return JsonResponse({'success': False, 'error': f'保存失败: {str(e)}'}, status=500)
 
 
 # ========== 个人中心 ==========

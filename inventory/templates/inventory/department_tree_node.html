@@ -14,6 +14,8 @@
             <i class="fas {% if level == 0 %}fa-building{% else %}fa-door-open{% endif %}"></i>
         </div>
 
+        {% load custom_filters %}
+        {% with dh=node|dept_head %}
         <div class="tree-info">
             <div class="tree-name">
                 {{ node.name }}
@@ -23,9 +25,17 @@
             </div>
             <div class="tree-meta">
                 编码: {{ node.code }} | 排序: {{ node.sort_order }}
+                {% if dh %}
+                <span class="badge bg-success text-white ms-1" style="font-size:0.7rem;">
+                    <i class="fas fa-user-tie me-1"></i>部门长: {{ dh.profile.name|default:dh.username }}
+                </span>
+                {% else %}
+                <span class="badge bg-secondary text-white ms-1" style="font-size:0.7rem;">未设置部门长</span>
+                {% endif %}
                 {% if node.description %}| {{ node.description|truncatechars:30 }}{% endif %}
             </div>
         </div>
+        {% endwith %}
 
         <div class="tree-actions">
             <a href="{% url 'department_create' %}?parent={{ node.id }}" class="btn btn-sm btn-outline-success" title="添加子部门">

@@ -1,0 +1,83 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}{{ action }}角色{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-user-tag me-2" style="color:#0075de;"></i>{{ action }}角色</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">角色标识 {% if action == '创建' %}<span class="text-danger">*</span>{% endif %}</label>
+                            {% if action == '创建' %}
+                            <input type="text" name="key" class="form-control" required maxlength="20"
+                                   placeholder="如：finance_manager" pattern="[a-z0-9_]+"
+                                   title="只能包含小写字母、数字和下划线">
+                            <div class="form-text text-muted">唯一标识，创建后不可修改，建议小写下划线格式</div>
+                            {% else %}
+                            <input type="text" class="form-control" value="{{ role.key }}" disabled>
+                            <input type="hidden" name="key" value="{{ role.key }}">
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">角色名称 <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control" required maxlength="50"
+                                   value="{% if action == '编辑' %}{{ role.name }}{% endif %}"
+                                   placeholder="如：财务主管">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">角色说明</label>
+                        <textarea name="description" class="form-control" rows="2" placeholder="描述该角色的职责范围">{% if action == '编辑' %}{{ role.description }}{% endif %}</textarea>
+                    </div>
+
+                    {% if action == '创建' %}
+                    <div class="mb-3">
+                        <label class="form-label">复制自角色（可选）</label>
+                        <select name="copy_from" class="form-select">
+                            <option value="">不复制（使用默认空权限）</option>
+                            {% for r in builtin_roles %}
+                            <option value="{{ r.key }}">{{ r.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted">复制已有角色的权限配置作为起点，创建后可在权限配置页面调整</div>
+                    </div>
+                    {% else %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">排序</label>
+                            <input type="number" name="sort_order" class="form-control" min="0"
+                                   value="{{ role.sort_order|default:0 }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="id_is_active"
+                                       {% if role.is_active %}checked{% endif %}
+                                       {% if role.is_builtin %}disabled{% endif %}>
+                                <label class="form-check-label" for="id_is_active">启用</label>
+                                {% if role.is_builtin %}
+                                <div class="form-text text-muted">内置角色不可停用</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="mt-3">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>{{ action }}
+                        </button>
+                        <a href="{% url 'role_list' %}" class="btn btn-outline-secondary ms-2">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -13,6 +13,11 @@
 
                     <!-- 申请基本信息 -->
                     <div class="row g-3">
+                        <!-- 操作员展示字段 -->
+                        <div class="col-md-6">
+                            <label class="form-label">操作员</label>
+                            <input type="text" class="form-control" value="{{ request.user.get_full_name|default:request.user.username }}" disabled readonly>
+                        </div>
                         {% for field in form %}
                         <div class="col-md-6">
                             <label class="form-label">{{ field.label }}</label>
@@ -50,9 +55,10 @@
                                 <col style="width:40px">
                                 <col>
                                 <col>
-                                <col style="width:100px">
-                                <col style="width:100px">
-                                <col style="width:100px">
+                                <col style="width:90px">
+                                <col style="width:90px">
+                                <col style="width:90px">
+                                <col style="width:160px">
                                 <col style="width:40px">
                             </colgroup>
                             <thead class="table-light">
@@ -63,6 +69,7 @@
                                     <th>入库数量</th>
                                     <th>单价</th>
                                     <th>小计</th>
+                                    <th>发票或对方单据编号</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -70,7 +77,7 @@
                             </tbody>
                             <tfoot id="itemsFoot" style="display:none;">
                                 <tr class="table-active fw-bold">
-                                    <td colspan="5" class="text-end">合计金额：</td>
+                                    <td colspan="6" class="text-end">合计金额：</td>
                                     <td id="totalAmount">¥0.00</td>
                                     <td></td>
                                 </tr>
@@ -201,6 +208,7 @@
             <td><input type="number" class="form-control form-control-sm itemQty" min="1" value="1" data-row="${idx}"></td>
             <td><input type="number" class="form-control form-control-sm itemPrice" min="0" step="0.01" value="0.00" data-row="${idx}"></td>
             <td class="text-end fw-bold itemSubtotal" data-row="${idx}">¥0.00</td>
+            <td><input type="text" class="form-control form-control-sm itemDocNo" placeholder="发票或对方单据编号" data-row="${idx}"></td>
             <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm removeRowBtn" data-row="${idx}"><i class="fas fa-trash-alt"></i></button></td>
         `;
         itemsBody.appendChild(tr);
@@ -243,12 +251,8 @@
                                     alert(`物品「${item.name}${item.specification ? ' ('+item.specification+')' : ''}」已在第 ${existing} 行，请修改已有行的数量，不要重复添加。`);
                                     return;
                                 }
-                                searchInput.value = `${item.name}${item.specification ? ' ('+item.specification+')' : ''}`;
+                                searchInput.value = item.name;
                                 hiddenInput.value = item.id;
-                                // 填入规格
-                                const specCell = tr.querySelector('.specCell');
-                                if (specCell) specCell.textContent = item.specification || '-';
-                                // 自动填入物品单价
                                 if (item.price && parseFloat(item.price) > 0) {
                                     priceInput.value = parseFloat(item.price).toFixed(2);
                                 }
@@ -319,14 +323,20 @@
             ok = false;
         }
 
-        // 收集明细（含单价）
+        // 收集明细（含单价、单据信息）
         const items = [];
         itemsBody.querySelectorAll('tr').forEach(tr => {
             const supplyId = tr.querySelector('.itemSupplyId').value;
             const qty = parseInt(tr.querySelector('.itemQty').value) || 0;
             const unitPrice = parseFloat(tr.querySelector('.itemPrice').value) || 0;
+            const docNo = tr.querySelector('.itemDocNo').value.trim();
             if (supplyId && qty > 0) {
-                items.push({ supply_id: supplyId, quantity: qty, unit_price: unitPrice });
+                items.push({
+                    supply_id: supplyId,
+                    quantity: qty,
+                    unit_price: unitPrice,
+                    doc_no: docNo
+                });
             }
         });
 
@@ -343,6 +353,46 @@
 
     // 默认添加一行
     addRow();
+
+    // ========== 编辑模式：回显已有明细 ==========
+    const existingItems = {{ existing_items_json|safe|default:'[]' }};
+    if (existingItems.length > 0) {
+        // 清空默认空行
+        itemsBody.innerHTML = '';
+        rowCounter = 0;
+        existingItems.forEach(item => {
+            rowCounter++;
+            const idx = rowCounter;
+            const tr = document.createElement('tr');
+            tr.dataset.rowIdx = idx;
+            tr.innerHTML = `
+                <td class="text-center text-muted">${idx}</td>
+                <td>
+                    <div class="position-relative">
+                        <input type="text" class="form-control form-control-sm itemSearch" autocomplete="off"
+                            placeholder="输入首字母/编码查找物品" data-row="${idx}"
+                            value="${item.supply_name || ''}">
+                        <input type="hidden" class="itemSupplyId" data-row="${idx}"
+                            value="${item.supply_id || ''}">
+                        <div class="list-group position-absolute w-100 shadow-sm itemSuggestions" data-row="${idx}"
+                            style="z-index:10;max-height:180px;overflow-y:auto;display:none;"></div>
+                    </div>
+                </td>
+                <td class="specCell text-muted small text-nowrap">${item.specification || '-'}</td>
+                <td><input type="number" class="form-control form-control-sm itemQty" min="1" value="${item.quantity || 1}" data-row="${idx}"></td>
+                <td><input type="number" class="form-control form-control-sm itemPrice" min="0" step="0.01" value="${(item.unit_price || 0).toFixed(2)}" data-row="${idx}"></td>
+                <td class="text-end fw-bold itemSubtotal" data-row="${idx}">¥0.00</td>
+                <td><input type="text" class="form-control form-control-sm itemDocNo" placeholder="发票或对方单据编号" data-row="${idx}"
+                    value="${item.doc_no || ''}"></td>
+                <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm removeRowBtn" data-row="${idx}"><i class="fas fa-trash-alt"></i></button></td>
+            `;
+            itemsBody.appendChild(tr);
+            bindRowEvents(tr, idx);
+            calcRow(tr);
+        });
+        updateHint();
+        updateTotal();
+    }
 })();
 </script>
 {% endblock %}

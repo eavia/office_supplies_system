@@ -1,6 +1,6 @@
 from inventory.models import (
     StockInApplication, StockOutOrder, ITDevice, OfficeSupply,
-    ROLE_GROUP_MAP, Profile
+    Profile
 )
 
 
@@ -13,17 +13,31 @@ def get_user_role(user):
 
 
 def get_visible_queryset(user, model):
-    """根据用户角色返回可见的 QuerySet"""
+    """根据用户角色返回可见的 QuerySet（配置驱动）
+
+    保持原有接口不变，内部委托给 permissions.get_visible_queryset_config
+    无配置时自动回退到内置默认行为
+    """
+    from inventory.permissions import get_visible_queryset_config
+    try:
+        return get_visible_queryset_config(user, model, action='view')
+    except Exception:
+        # 回退到硬编码逻辑（兼容降级）
+        return _get_visible_queryset_fallback(user, model)
+
+
+def _get_visible_queryset_fallback(user, model):
+    """硬编码回退逻辑（兼容旧行为）"""
     role = get_user_role(user)
-    
+
     if role == 'admin':
         return model.objects.all()
-    
+
     if model == StockInApplication:
         if role == 'warehouse':
             return model.objects.all()
         return model.objects.filter(applicant=user)
-    
+
     if model == StockOutOrder:
         if role == 'warehouse':
             return model.objects.all()
@@ -33,7 +47,7 @@ def get_visible_queryset(user, model):
                 return model.objects.filter(department=profile.department)
             return model.objects.filter(operator=user)
         return model.objects.filter(operator=user)
-    
+
     if model == ITDevice:
         if role == 'warehouse':
             return model.objects.all()
@@ -44,10 +58,10 @@ def get_visible_queryset(user, model):
             return model.objects.none()
         return model.objects.filter(department=getattr(
             getattr(user, 'profile', None), 'department', None))
-    
+
     if model == OfficeSupply:
         return model.objects.all()
-    
+
     return model.objects.all()
 
 

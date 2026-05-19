@@ -30,17 +30,9 @@
                     </div>
                 </div>
                 <div class="row mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label text-muted">入库日期</label>
                         <p class="mb-0">{{ application.stockin_date|date:"Y-m-d" }}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label text-muted">对方单据编号</label>
-                        <p class="mb-0">{{ application.counterpart_doc_no|default:"-" }}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label text-muted">发票编号</label>
-                        <p class="mb-0">{{ application.invoice_no|default:"-" }}</p>
                     </div>
                 </div>
                 <div class="mb-3">

@@ -39,8 +39,8 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">所属部门 <span class="text-danger">*</span></label>
-                            <select name="department" class="form-select">
+                            <label class="form-label">所属部门 <span id="deptRequired" class="text-danger">*</span></label>
+                            <select name="department" class="form-select" id="id_department" {% if action == '编辑' %}data-role="{{ profile.role }}"{% endif %}>
                                 <option value="">请选择部门</option>
                                 {% for dept in departments %}
                                 <option value="{{ dept.pk }}" {% if action == '编辑' and profile.department_id == dept.pk %}selected{% endif %}>
@@ -76,4 +76,33 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var roleSelect = document.querySelector('select[name="role"]');
+    var deptSelect = document.getElementById('id_department');
+    var deptRequired = document.getElementById('deptRequired');
+
+    function updateDeptRequired() {
+        var role = roleSelect ? roleSelect.value : '';
+        var editRole = deptSelect ? deptSelect.getAttribute('data-role') : '';
+        var currentRole = role || editRole || '';
+
+        if (currentRole === 'admin' || currentRole === 'warehouse') {
+            if (deptSelect) deptSelect.removeAttribute('required');
+            if (deptRequired) deptRequired.style.display = 'none';
+        } else {
+            if (deptSelect) deptSelect.setAttribute('required', 'required');
+            if (deptRequired) deptRequired.style.display = 'inline';
+        }
+    }
+
+    if (roleSelect) {
+        roleSelect.addEventListener('change', updateDeptRequired);
+    }
+    updateDeptRequired();
+});
+</script>
 {% endblock %}

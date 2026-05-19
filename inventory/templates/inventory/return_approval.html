@@ -1,0 +1,37 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}审批归还{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-undo me-2" style="color:#48bb78;"></i>审批归还申请 — {{ ret.return_no }}</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr><td class="text-muted" style="width:120px">归还单号</td><td><strong>{{ ret.return_no }}</strong></td></tr>
+                    <tr><td class="text-muted">关联出库单</td><td><a href="{% url 'stockout_detail' ret.stockout_order.pk %}">{{ ret.stockout_order.record_no }}</a></td></tr>
+                    <tr><td class="text-muted">归还物品</td><td>{{ ret.supply.name }}</td></tr>
+                    <tr><td class="text-muted">归还数量</td><td>{{ ret.quantity }} {{ ret.unit }}</td></tr>
+                    <tr><td class="text-muted">归还人</td><td>{{ ret.returner }}</td></tr>
+                    <tr><td class="text-muted">归还日期</td><td>{{ ret.return_date|date:"Y-m-d" }}</td></tr>
+                    {% if ret.reason %}<tr><td class="text-muted">归还原因</td><td>{{ ret.reason }}</td></tr>{% endif %}
+                </table>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">审批意见</label>
+                        <textarea name="comment" class="form-control" rows="2" placeholder="审批意见（可选）"></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" name="action" value="approve" class="btn btn-success"><i class="fas fa-check me-1"></i>批准（增加库存）</button>
+                        <button type="submit" name="action" value="reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>拒绝</button>
+                        <a href="{% url 'return_list' %}" class="btn btn-secondary">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

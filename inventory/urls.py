@@ -39,6 +39,7 @@ urlpatterns = [
     # 归还申请
     path('returns/', views.return_application_list, name='return_list'),
     path('returns/create/', views.return_application_create, name='return_create'),
+    path('returns/<int:pk>/approve/', views.return_approval, name='return_approval'),
     
     # IT设备管理
     path('devices/', views.device_list, name='device_list'),
@@ -81,6 +82,10 @@ urlpatterns = [
     path('users/pending/', views.user_pending_list, name='user_pending_list'),
     path('users/<int:pk>/approve/', views.user_approve, name='user_approve'),
     path('users/permissions/', views.permission_management, name='permission_management'),
+    path('users/roles/', views.role_list, name='role_list'),
+    path('users/roles/create/', views.role_create, name='role_create'),
+    path('users/roles/<int:pk>/edit/', views.role_edit, name='role_edit'),
+    path('users/roles/<int:pk>/delete/', views.role_delete, name='role_delete'),
 
     # 个人中心
     path('profile/', views.profile_view, name='profile'),
@@ -91,4 +96,6 @@ urlpatterns = [
 
     # API
     path('api/dept-head-check/', views.api_dept_head_check, name='api_dept_head_check'),
+    path('api/permissions/save/', views.api_save_permissions, name='api_save_permissions'),
+    path('api/permissions/<str:role_key>/', views.api_role_permissions, name='api_role_permissions'),
 ]
