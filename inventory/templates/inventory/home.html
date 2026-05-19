@@ -185,11 +185,11 @@
             <div class="card-body">
                 {% if recent_outs %}
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover" style="table-layout:fixed">
                         <thead>
                             <tr>
                                 <th>出库单号</th>
-                                <th>出库物品</th>
+                                <th style="width:200px">出库物品</th>
                                 <th>领用人</th>
                             </tr>
                         </thead>
@@ -197,10 +197,8 @@
                             {% for out in recent_outs %}
                             <tr onclick="window.location='{% url 'stockout_detail' out.pk %}'" style="cursor:pointer;">
                                 <td>{{ out.record_no }}</td>
-                                <td>
-                                    {% for item in out.items.all %}
-                                    {{ item.supply.name }}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}
-                                    {% endfor %}
+                                <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{% for item in out.items.all %}{{ item.supply.name }}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}{% endfor %}">
+                                    {% for item in out.items.all %}{{ item.supply.name }}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}{% endfor %}
                                 </td>
                                 <td>{{ out.recipient }}</td>
                             </tr>
