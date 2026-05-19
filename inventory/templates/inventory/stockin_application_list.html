@@ -30,11 +30,11 @@
 
 <div class="table-container">
     <div class="table-responsive">
-        <table class="table">
+        <table class="table" style="white-space:nowrap">
             <thead>
                 <tr>
                     <th>单号</th>
-                    <th>物品</th>
+                    <th style="width:200px">物品</th>
                     <th>申请人</th>
                     <th>部门</th>
                     <th>状态</th>
@@ -46,9 +46,11 @@
                 {% for app in page_obj %}
                 <tr>
                     <td><strong>{{ app.application_no }}</strong></td>
-                    <td>{{ app.get_items_summary }}</td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;max-width:200px;" title="{% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}">
+                        {% for item in app.items.all %}{{ item.supply.name }}×{{ item.quantity }}{% if not forloop.last %}，{% endif %}{% endfor %}
+                    </td>
                     <td>{{ app.applicant.username }}</td>
-                    <td>{{ app.department }}</td>
+                    <td>{{ app.department.name|default:"-" }}</td>
                     <td>
                         {% if app.status == '待审批' %}
                         <span class="badge bg-warning">待审批</span>
@@ -58,7 +60,7 @@
                         <span class="badge bg-danger">已拒绝</span>
                         {% endif %}
                     </td>
-                    <td>{{ app.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ app.created_at|date:"Y-m-d" }}</td>
                     <td>
                         <a href="{% url 'stockin_application_detail' app.pk %}" class="btn btn-sm btn-outline-info" title="查看明细">
                             <i class="fas fa-eye"></i>

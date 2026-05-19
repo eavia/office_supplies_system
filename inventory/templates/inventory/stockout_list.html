@@ -39,14 +39,13 @@
 
 <div class="table-container">
     <div class="table-responsive">
-        <table class="table">
+        <table class="table" style="white-space:nowrap">
             <thead>
                 <tr>
                     <th>出库单号</th>
-                    <th>出库物品</th>
+                    <th style="width:200px">出库物品</th>
                     <th>领用人</th>
                     <th>部门</th>
-                    <th>类型</th>
                     <th>审批状态</th>
                     <th>操作员</th>
                     <th>出库时间</th>
@@ -57,24 +56,11 @@
                 {% for record in page_obj %}
                 <tr>
                     <td><strong>{{ record.record_no }}</strong></td>
-                    <td>
-                        {% for item in record.items.all %}
-                        <span class="badge bg-light text-dark me-1 mb-1">{{ item.supply.name }}{% if item.supply.specification %}({{ item.supply.specification }}){% endif %} × {{ item.quantity }}{{ item.supply.unit }}</span>
-                        {% endfor %}
+                    <td style="overflow:hidden;text-overflow:ellipsis;max-width:200px;" title="{% for item in record.items.all %}{{ item.supply.name }}{% if item.supply.specification %}({{ item.supply.specification }}){% endif %}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}{% endfor %}">
+                        {% for item in record.items.all %}{{ item.supply.name }}{% if item.supply.specification %}({{ item.supply.specification }}){% endif %}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}{% endfor %}
                     </td>
                     <td>{{ record.recipient }}</td>
-                    <td>{{ record.department }}</td>
-                    <td>
-                        {% if record.out_type == '领用' %}
-                        <span class="badge bg-primary">领用</span>
-                        {% elif record.out_type == '归还' %}
-                        <span class="badge bg-success">归还</span>
-                        {% elif record.out_type == '报废' %}
-                        <span class="badge bg-danger">报废</span>
-                        {% else %}
-                        <span class="badge bg-info">调拨</span>
-                        {% endif %}
-                    </td>
+                    <td>{{ record.department.name|default:"-" }}</td>
                     <td>
                         {% if record.status == '待审批' %}
                         <span class="badge bg-warning text-dark">待审批</span>
@@ -87,7 +73,7 @@
                         {% endif %}
                     </td>
                     <td>{{ record.operator.username }}</td>
-                    <td>{{ record.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ record.created_at|date:"Y-m-d" }}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
                             <a href="{% url 'stockout_detail' record.pk %}" class="btn btn-outline-info" title="查看明细">
@@ -106,7 +92,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-5">
+                    <td colspan="8" class="text-center text-muted py-5">
                         <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
                         暂无数据
                     </td>
