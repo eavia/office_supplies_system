@@ -659,6 +659,7 @@ def approval_process(request, pk):
 @login_required
 def approval_process_stockout(request, pk):
     """二级审批处理（出库单）"""
+    from django.db import transaction
     from django.db.models import F
     order = get_object_or_404(
         StockOutOrder.objects.select_related('department', 'operator').prefetch_related('items__supply'),
@@ -680,12 +681,21 @@ def approval_process_stockout(request, pk):
             if approve_scope not in ('all', 'dept'):
                 messages.error(request, '您没有部门长审批权限')
                 return redirect('stockout_detail', pk=order.pk)
-            order.status = '待仓管审批'
-            order.dept_approver = request.user
-            order.dept_approval_time = timezone.now()
-            order.dept_approval_comment = comment
-            order.save()
-            messages.success(request, f'出库单 "{order.record_no}" 部门长已通过，待仓管审批')
+            try:
+                with transaction.atomic():
+                    # 重新获取行锁，避免并发状态变更
+                    order_locked = StockOutOrder.objects.select_for_update().get(pk=order.pk)
+                    if order_locked.status != '待审批':
+                        raise ValueError('状态已变更')
+                    order_locked.status = '待仓管审批'
+                    order_locked.dept_approver = request.user
+                    order_locked.dept_approval_time = timezone.now()
+                    order_locked.dept_approval_comment = comment
+                    order_locked.save()
+                messages.success(request, f'出库单 "{order.record_no}" 部门长已通过，待仓管审批')
+            except ValueError:
+                messages.error(request, '该出库单状态已被其他用户变更，请刷新后重试')
+            return redirect('stockout_detail', pk=order.pk)
 
         elif action == 'dept_reject':
             if order.status != '待审批':
@@ -696,17 +706,29 @@ def approval_process_stockout(request, pk):
             if approve_scope not in ('all', 'dept'):
                 messages.error(request, '您没有部门长审批权限')
                 return redirect('stockout_detail', pk=order.pk)
-            # 驳回时释放锁定库存
-            for item in order.items.select_related('supply').all():
-                OfficeSupply.objects.filter(pk=item.supply.pk).update(
-                    locked_quantity=F('locked_quantity') - item.quantity
-                )
-            order.status = '已拒绝'
-            order.dept_approver = request.user
-            order.dept_approval_time = timezone.now()
-            order.dept_approval_comment = comment
-            order.save()
-            messages.info(request, f'出库单 "{order.record_no}" 已被部门长驳回，已释放锁定库存')
+            try:
+                with transaction.atomic():
+                    # 重新获取行锁，避免并发状态变更
+                    order_locked = StockOutOrder.objects.select_for_update().get(pk=order.pk)
+                    if order_locked.status != '待审批':
+                        raise ValueError('状态已变更')
+                    # 先锁定所有相关库存行，再释放锁定库存
+                    supply_ids = sorted({item.supply.pk for item in order.items.select_related('supply').all()})
+                    for sid in supply_ids:
+                        OfficeSupply.objects.select_for_update().get(pk=sid)
+                    for item in order.items.select_related('supply').all():
+                        OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                            locked_quantity=F('locked_quantity') - item.quantity
+                        )
+                    order_locked.status = '已拒绝'
+                    order_locked.dept_approver = request.user
+                    order_locked.dept_approval_time = timezone.now()
+                    order_locked.dept_approval_comment = comment
+                    order_locked.save()
+                messages.info(request, f'出库单 "{order.record_no}" 已被部门长驳回，已释放锁定库存')
+            except ValueError:
+                messages.error(request, '该出库单状态已被其他用户变更，请刷新后重试')
+            return redirect('stockout_detail', pk=order.pk)
 
         # 仓管二级审批
         elif action == 'wh_approve':
@@ -717,28 +739,46 @@ def approval_process_stockout(request, pk):
             if not has_permission(role, 'stockout', 'approve'):
                 messages.error(request, '您没有仓管审批权限')
                 return redirect('stockout_detail', pk=order.pk)
-            # 校验库存
-            errors = []
-            for item in order.items.select_related('supply').all():
-                if item.quantity > item.supply.quantity:
-                    errors.append(f'{item.supply.name} 库存不足！库存：{item.supply.quantity}，需要：{item.quantity}')
-            if errors:
-                for err in errors:
-                    messages.error(request, err)
-                return redirect('stockout_detail', pk=order.pk)
-
-            # 审批通过：扣减实际库存并释放锁定（原子操作，使用update避免触发save中的F表达式比较）
-            for item in order.items.select_related('supply').all():
-                OfficeSupply.objects.filter(pk=item.supply.pk).update(
-                    quantity=F('quantity') - item.quantity,
-                    locked_quantity=F('locked_quantity') - item.quantity
-                )
-            order.status = '已批准'
-            order.approver = request.user
-            order.approval_time = timezone.now()
-            order.approval_comment = comment
-            order.save()
-            messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库并扣减库存！')
+            try:
+                with transaction.atomic():
+                    # 重新获取行锁，避免并发状态变更
+                    order_locked = StockOutOrder.objects.select_for_update().get(pk=order.pk)
+                    if order_locked.status != '待仓管审批':
+                        raise ValueError('状态已变更')
+                    # 先锁定所有相关库存行
+                    items = list(order.items.select_related('supply').all())
+                    supply_ids = sorted({item.supply.pk for item in items})
+                    locked_supplies = {}
+                    for sid in supply_ids:
+                        locked_supplies[sid] = OfficeSupply.objects.select_for_update().get(pk=sid)
+                    # 校验库存
+                    errors = []
+                    for item in items:
+                        supply = locked_supplies[item.supply.pk]
+                        if item.quantity > supply.quantity:
+                            errors.append(f'{supply.name} 库存不足！库存：{supply.quantity}，需要：{item.quantity}')
+                    if errors:
+                        raise ValueError('\n'.join(errors))
+                    # 审批通过：扣减实际库存并释放锁定
+                    for item in items:
+                        OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                            quantity=F('quantity') - item.quantity,
+                            locked_quantity=F('locked_quantity') - item.quantity
+                        )
+                    order_locked.status = '已批准'
+                    order_locked.approver = request.user
+                    order_locked.approval_time = timezone.now()
+                    order_locked.approval_comment = comment
+                    order_locked.save()
+                messages.success(request, f'出库单 "{order.record_no}" 已批准，共 {order.items.count()} 项物品已出库并扣减库存！')
+            except ValueError as e:
+                msg = str(e)
+                if msg == '状态已变更':
+                    messages.error(request, '该出库单状态已被其他用户变更，请刷新后重试')
+                else:
+                    for err in msg.split('\n'):
+                        messages.error(request, err)
+            return redirect('stockout_detail', pk=order.pk)
 
         elif action == 'wh_reject':
             if order.status != '待仓管审批':
@@ -748,17 +788,29 @@ def approval_process_stockout(request, pk):
             if not has_permission(role, 'stockout', 'approve'):
                 messages.error(request, '您没有仓管审批权限')
                 return redirect('stockout_detail', pk=order.pk)
-            # 驳回时释放锁定库存
-            for item in order.items.select_related('supply').all():
-                OfficeSupply.objects.filter(pk=item.supply.pk).update(
-                    locked_quantity=F('locked_quantity') - item.quantity
-                )
-            order.status = '已拒绝'
-            order.approver = request.user
-            order.approval_time = timezone.now()
-            order.approval_comment = comment
-            order.save()
-            messages.info(request, f'出库单 "{order.record_no}" 已被仓管驳回，已释放锁定库存')
+            try:
+                with transaction.atomic():
+                    # 重新获取行锁，避免并发状态变更
+                    order_locked = StockOutOrder.objects.select_for_update().get(pk=order.pk)
+                    if order_locked.status != '待仓管审批':
+                        raise ValueError('状态已变更')
+                    # 先锁定所有相关库存行，再释放锁定库存
+                    supply_ids = sorted({item.supply.pk for item in order.items.select_related('supply').all()})
+                    for sid in supply_ids:
+                        OfficeSupply.objects.select_for_update().get(pk=sid)
+                    for item in order.items.select_related('supply').all():
+                        OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                            locked_quantity=F('locked_quantity') - item.quantity
+                        )
+                    order_locked.status = '已拒绝'
+                    order_locked.approver = request.user
+                    order_locked.approval_time = timezone.now()
+                    order_locked.approval_comment = comment
+                    order_locked.save()
+                messages.info(request, f'出库单 "{order.record_no}" 已被仓管驳回，已释放锁定库存')
+            except ValueError:
+                messages.error(request, '该出库单状态已被其他用户变更，请刷新后重试')
+            return redirect('stockout_detail', pk=order.pk)
 
         return redirect('stockout_detail', pk=order.pk)
 
@@ -1032,29 +1084,43 @@ def stockout_edit(request, pk):
                     'error_indices_json': '[]',
                 })
 
-            # 阶段2：原子操作——释放旧锁定、校验新可用库存、加新锁定
+            # 阶段2：原子操作——先获取行锁、校验库存、再释放旧锁定、加新锁定
             try:
                 with transaction.atomic():
-                    # 2a. 释放旧明细的锁定库存（使用update避免触发save中的F表达式比较）
+                    # 2a. 获取所有涉及的物品行锁（按主键排序避免死锁）
                     old_items = list(order.items.select_related('supply').all())
-                    for item in old_items:
-                        OfficeSupply.objects.filter(pk=item.supply.pk).update(
-                            locked_quantity=F('locked_quantity') - item.quantity
-                        )
+                    all_supply_ids = sorted(set(
+                        [item.supply.pk for item in old_items] + [int(sid) for sid in merged_new.keys()]
+                    ))
+                    supplies = {}
+                    for sid in all_supply_ids:
+                        supplies[sid] = OfficeSupply.objects.select_for_update().get(pk=sid)
 
-                    # 2b. 校验新明细的可用库存（注意：释放旧锁定后需要重新查询）
+                    # 2b. 计算旧锁定数量
+                    old_locks = {}
+                    for item in old_items:
+                        old_locks[item.supply.pk] = old_locks.get(item.supply.pk, 0) + item.quantity
+
+                    # 2c. 校验新明细库存（考虑释放旧锁定后的可用量）
                     for sid, qty in merged_new.items():
-                        supply = OfficeSupply.objects.select_for_update().get(pk=int(sid))
-                        if qty > supply.available_quantity:
+                        sid_int = int(sid)
+                        supply = supplies[sid_int]
+                        released = old_locks.get(sid_int, 0)
+                        effective_available = supply.available_quantity + released
+                        if qty > effective_available:
                             raise ValueError(
-                                f'{supply.name} 可用库存不足！可用：{supply.available_quantity} {supply.unit}，需要：{qty}'
+                                f'{supply.name} 可用库存不足！当前可用：{supply.available_quantity}，含将释放锁定：{released} {supply.unit}，需要：{qty}'
                             )
 
-                    # 2c. 全部通过，保存表单并重建明细
+                    # 2d. 全部通过，释放旧锁定、保存表单、重建明细、加新锁定
+                    for sid, released in old_locks.items():
+                        OfficeSupply.objects.filter(pk=sid).update(
+                            locked_quantity=F('locked_quantity') - released
+                        )
                     form.save()
                     order.items.all().delete()
                     for sid, qty in merged_new.items():
-                        supply = OfficeSupply.objects.get(pk=int(sid))
+                        supply = supplies[int(sid)]
                         StockOutItem.objects.create(
                             order=order, supply=supply, quantity=qty,
                             specification=supply.specification or '',
@@ -1062,17 +1128,12 @@ def stockout_edit(request, pk):
                             location=supply.location or '',
                             supplier=supply.supplier or '',
                         )
-                        # 锁定新库存
                         OfficeSupply.objects.filter(pk=supply.pk).update(
                             locked_quantity=F('locked_quantity') + qty
                         )
 
             except ValueError as e:
-                # 回滚后需要重新锁定旧库存（因为事务已回滚）
-                for item in old_items:
-                    OfficeSupply.objects.filter(pk=item.supply.pk).update(
-                        locked_quantity=F('locked_quantity') + item.quantity
-                    )
+                # 事务已自动回滚，旧锁定未释放，无需手动补偿
                 messages.error(request, str(e))
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '修改出库单',
