@@ -7,7 +7,7 @@
 <!-- 统计卡片 -->
 <div class="row g-4 mb-4">
     <div class="col-md-3">
-        <div class="card stat-card primary">
+        <div class="card stat-card primary stat-card-3d">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -27,7 +27,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card stat-card warning">
+        <div class="card stat-card warning stat-card-3d">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -47,7 +47,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card stat-card info">
+        <div class="card stat-card info stat-card-3d">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -68,7 +68,7 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card stat-card success">
+        <div class="card stat-card success stat-card-3d">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -213,4 +213,68 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    // ===== 3D Tilt Effect for Stat Cards =====
+    var cards = document.querySelectorAll('.stat-card-3d');
+    
+    cards.forEach(function(card) {
+        card.addEventListener('mousemove', function(e) {
+            var rect = card.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            var centerX = rect.width / 2;
+            var centerY = rect.height / 2;
+            
+            var rotateX = ((y - centerY) / centerY) * -4;
+            var rotateY = ((x - centerX) / centerX) * 4;
+            
+            card.style.transform = 'perspective(1000px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg) scale3d(1.02, 1.02, 1.02)';
+            card.style.boxShadow = '0 8px 30px rgba(0,0,0,0.12), 0 16px 48px rgba(0,0,0,0.08)';
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
+            card.style.boxShadow = '';
+        });
+
+        card.addEventListener('touchmove', function(e) {
+            var touch = e.touches[0];
+            var rect = card.getBoundingClientRect();
+            var x = touch.clientX - rect.left;
+            var y = touch.clientY - rect.top;
+            var centerX = rect.width / 2;
+            var centerY = rect.height / 2;
+            
+            var rotateX = ((y - centerY) / centerY) * -3;
+            var rotateY = ((x - centerX) / centerX) * 3;
+            
+            card.style.transform = 'perspective(1000px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg) scale3d(1.01, 1.01, 1.01)';
+            card.style.boxShadow = '0 8px 30px rgba(0,0,0,0.1)';
+        }, { passive: true });
+
+        card.addEventListener('touchend', function() {
+            card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
+            card.style.boxShadow = '';
+        });
+    });
+
+    // ===== Quick Action Touch Feedback =====
+    var quickActions = document.querySelectorAll('.quick-action');
+    quickActions.forEach(function(action) {
+        action.addEventListener('touchstart', function() {
+            action.style.transform = 'scale(0.95)';
+        }, { passive: true });
+        action.addEventListener('touchend', function() {
+            action.style.transform = '';
+        });
+        action.addEventListener('touchcancel', function() {
+            action.style.transform = '';
+        });
+    });
+})();
+</script>
 {% endblock %}

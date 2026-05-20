@@ -8,14 +8,21 @@
                 <h4 class="mb-0"><i class="fas fa-edit me-2" style="color:#0075de;"></i>{{ title }}</h4>
             </div>
             <div class="card-body">
+                <div class="form-section-header d-flex align-items-center gap-2 mb-3" role="button" aria-expanded="true" id="codeInfoHeader">
+                    <i class="fas fa-info-circle" style="color:var(--brand-blue);"></i>
+                    <span class="fw-semibold">物品编码（主数据）</span>
+                    <i class="fas fa-chevron-down ms-auto toggle-icon" style="font-size:0.7rem;"></i>
+                </div>
+                <div class="form-section-body" id="codeInfoBody">
                 <div class="alert alert-info mb-3 d-flex justify-content-between align-items-center">
-                    <span class="fw-semibold mb-0">物品编码（主数据）</span>
+                    <span class="mb-0"><i class="fas fa-barcode me-2"></i>当前编码</span>
                     {% if supply and supply.code %}
                     <span class="badge bg-primary fs-6">{{ supply.code }}</span>
                     {% else %}
                     <span class="badge bg-secondary fs-6">保存后自动生成</span>
                     {% endif %}
                 </div>
+                </div><!-- /form-section-body -->
                 <form method="post" id="supplyForm">
                     {% csrf_token %}
                     <div class="row g-3">
