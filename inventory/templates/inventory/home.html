@@ -180,7 +180,7 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>最近出库记录</h5>
+                <h5 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>最近出库单</h5>
             </div>
             <div class="card-body">
                 {% if recent_outs %}
@@ -191,6 +191,7 @@
                                 <th style="width:120px">出库单号</th>
                                 <th style="width:200px">出库物品</th>
                                 <th>领用人</th>
+                                <th>状态</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -201,13 +202,24 @@
                                     {% for item in out.items.all %}{{ item.supply.name }}×{{ item.quantity }}{{ item.supply.unit }}{% if not forloop.last %}，{% endif %}{% endfor %}
                                 </td>
                                 <td>{{ out.recipient }}</td>
+                                <td>
+                                    {% if out.status == '待审批' %}
+                                    <span class="badge bg-warning">待部门长审批</span>
+                                    {% elif out.status == '待仓管审批' %}
+                                    <span class="badge bg-info">待仓管审批</span>
+                                    {% elif out.status == '已批准' %}
+                                    <span class="badge bg-success">已批准</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">已拒绝</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted mb-0">暂无出库记录</p>
+                <p class="text-muted mb-0">暂无出库单</p>
                 {% endif %}
             </div>
         </div>
