@@ -196,15 +196,16 @@
                         <h6 class="mb-0"><i class="fas fa-user-tie me-2"></i>部门长审批</h6>
                     </div>
                     <div class="card-body">
-                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}">
+                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}" class="approval-form">
                             {% csrf_token %}
+                            <input type="hidden" name="action" value="">
                             <div class="mb-3">
                                 <label class="form-label">审批意见</label>
                                 <textarea name="comment" class="form-control" rows="2" placeholder="审批意见（可选）"></textarea>
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" name="action" value="dept_approve" class="btn btn-success"><i class="fas fa-check me-1"></i>通过</button>
-                                <button type="submit" name="action" value="dept_reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>驳回</button>
+                                <button type="submit" class="btn btn-success approval-pass" data-action="dept_approve"><i class="fas fa-check me-1"></i>通过</button>
+                                <button type="submit" class="btn btn-danger approval-reject" data-action="dept_reject"><i class="fas fa-times me-1"></i>驳回</button>
                             </div>
                         </form>
                     </div>
@@ -217,15 +218,16 @@
                         <h6 class="mb-0"><i class="fas fa-warehouse me-2"></i>仓管审批</h6>
                     </div>
                     <div class="card-body">
-                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}">
+                        <form method="post" action="{% url 'approval_process_stockout' order.pk %}" class="approval-form">
                             {% csrf_token %}
+                            <input type="hidden" name="action" value="">
                             <div class="mb-3">
                                 <label class="form-label">审批意见</label>
                                 <textarea name="comment" class="form-control" rows="2" placeholder="审批意见（可选）"></textarea>
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" name="action" value="wh_approve" class="btn btn-success"><i class="fas fa-check me-1"></i>通过</button>
-                                <button type="submit" name="action" value="wh_reject" class="btn btn-danger"><i class="fas fa-times me-1"></i>驳回</button>
+                                <button type="submit" class="btn btn-success approval-pass" data-action="wh_approve"><i class="fas fa-check me-1"></i>通过</button>
+                                <button type="submit" class="btn btn-danger approval-reject" data-action="wh_reject"><i class="fas fa-times me-1"></i>驳回</button>
                             </div>
                         </form>
                     </div>
@@ -323,4 +325,20 @@
 .sig-label { font-weight: 600; }
 .sig-line { display: inline-block; min-width: 120px; border-bottom: 1px solid #333; }
 </style>
+
+{% block extra_js %}
+<script>
+// 审批表单：在全局脚本 disabled 按钮前，先将 action 写入隐藏字段
+document.querySelectorAll('.approval-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        var btn = e.submitter || form.querySelector('button[type="submit"]:focus') || form.querySelector('button[type="submit"]');
+        if (btn && btn.dataset.action) {
+            var hidden = form.querySelector('input[name="action"]');
+            if (hidden) hidden.value = btn.dataset.action;
+        }
+    });
+});
+</script>
+{% endblock %}
+
 {% endblock %}

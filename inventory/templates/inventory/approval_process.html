@@ -82,8 +82,9 @@
 
                 <hr>
 
-                <form method="post">
+                <form method="post" class="approval-form">
                     {% csrf_token %}
+                    <input type="hidden" name="action" value="">
                     <div class="mb-4">
                         <label class="form-label">审批意见</label>
                         <textarea name="approval_comment" class="form-control" rows="3" placeholder="可选，填写审批意见"></textarea>
@@ -93,10 +94,10 @@
                             <i class="fas fa-arrow-left me-1"></i>返回
                         </a>
                         <div class="d-flex gap-2">
-                            <button type="submit" name="action" value="reject" class="btn btn-danger">
+                            <button type="submit" class="btn btn-danger approval-reject" data-action="reject">
                                 <i class="fas fa-times me-1"></i> 拒绝
                             </button>
-                            <button type="submit" name="action" value="approve" class="btn btn-success">
+                            <button type="submit" class="btn btn-success approval-pass" data-action="approve">
                                 <i class="fas fa-check me-1"></i> 批准
                             </button>
                         </div>
@@ -106,4 +107,20 @@
         </div>
     </div>
 </div>
+
+{% block extra_js %}
+<script>
+// 审批表单：在全局脚本 disabled 按钮前，先将 action 写入隐藏字段
+document.querySelectorAll('.approval-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        var btn = e.submitter || form.querySelector('button[type="submit"]:focus') || form.querySelector('button[type="submit"]');
+        if (btn && btn.dataset.action) {
+            var hidden = form.querySelector('input[name="action"]');
+            if (hidden) hidden.value = btn.dataset.action;
+        }
+    });
+});
+</script>
+{% endblock %}
+
 {% endblock %}

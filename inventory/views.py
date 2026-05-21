@@ -417,8 +417,33 @@ def stockin_application_create(request):
             if errors:
                 for err in errors:
                     messages.error(request, err)
+                # 恢复已填写内容
+                restored = []
+                for item in items_data:
+                    supply_id = item.get('supply_id')
+                    qty = int(item.get('quantity', 0))
+                    try:
+                        supply = OfficeSupply.objects.get(pk=supply_id)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'supply_name': supply.name + (f' ({supply.specification})' if supply.specification else ''),
+                            'specification': supply.specification or '',
+                            'quantity': qty,
+                            'unit_price': float(item.get('unit_price', supply.price or 0)),
+                            'doc_no': item.get('doc_no', ''),
+                        })
+                    except OfficeSupply.DoesNotExist:
+                        restored.append({
+                            'supply_id': supply_id,
+                            'supply_name': f'(不存在 ID:{supply_id})',
+                            'specification': '',
+                            'quantity': qty,
+                            'unit_price': 0,
+                            'doc_no': item.get('doc_no', ''),
+                        })
                 return render(request, 'inventory/stockin_application_form.html', {
-                    'form': form, 'title': '入库单', 'action': '提交'
+                    'form': form, 'title': '入库单', 'action': '提交',
+                    'existing_items_json': json.dumps(restored, ensure_ascii=False),
                 })
 
             # 创建申请单
@@ -495,9 +520,34 @@ def stockin_application_update(request, pk):
             if errors:
                 for err in errors:
                     messages.error(request, err)
+                # 恢复已填写内容
+                restored = []
+                for item in items_data:
+                    supply_id = item.get('supply_id')
+                    qty = int(item.get('quantity', 0))
+                    try:
+                        supply = OfficeSupply.objects.get(pk=supply_id)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'supply_name': supply.name + (f' ({supply.specification})' if supply.specification else ''),
+                            'specification': supply.specification or '',
+                            'quantity': qty,
+                            'unit_price': float(item.get('unit_price', supply.price or 0)),
+                            'doc_no': item.get('doc_no', ''),
+                        })
+                    except OfficeSupply.DoesNotExist:
+                        restored.append({
+                            'supply_id': supply_id,
+                            'supply_name': f'(不存在 ID:{supply_id})',
+                            'specification': '',
+                            'quantity': qty,
+                            'unit_price': 0,
+                            'doc_no': item.get('doc_no', ''),
+                        })
                 return render(request, 'inventory/stockin_application_form.html', {
                     'form': form, 'application': application,
-                    'title': '申请变更', 'action': '更新'
+                    'title': '申请变更', 'action': '更新',
+                    'existing_items_json': json.dumps(restored, ensure_ascii=False),
                 })
 
             form.save()
@@ -900,7 +950,7 @@ def stockout_create(request):
                         supply = OfficeSupply.objects.get(pk=supply_id)
                         restored.append({
                             'supply_id': supply_id,
-                            'name': str(supply),
+                            'name': supply.name,
                             'specification': supply.specification or '',
                             'quantity': qty,
                             'stock': supply.available_quantity,
@@ -958,10 +1008,40 @@ def stockout_create(request):
             except ValueError:
                 for err in lock_errors:
                     messages.error(request, err)
+                # 恢复已填写内容（阶段1合并后需按原始行展开）
+                restored = []
+                error_indices = []
+                for i, item in enumerate(items_data):
+                    supply_id = item.get('supply_id')
+                    qty = int(item.get('quantity', 0))
+                    try:
+                        supply = OfficeSupply.objects.get(pk=supply_id)
+                        # 检查是否库存不足
+                        is_stock_error = str(supply_id) in merged and merged[str(supply_id)] > supply.available_quantity
+                        if is_stock_error:
+                            error_indices.append(i)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': supply.name,
+                            'specification': supply.specification or '',
+                            'quantity': qty,
+                            'stock': supply.available_quantity,
+                            'unit': supply.unit or '',
+                        })
+                    except OfficeSupply.DoesNotExist:
+                        error_indices.append(i)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': f'(不存在 ID:{supply_id})',
+                            'specification': '',
+                            'quantity': qty,
+                            'stock': 0,
+                            'unit': '',
+                        })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '出库登记',
-                    'restored_items_json': '[]',
-                    'error_indices_json': '[]',
+                    'restored_items_json': json.dumps(restored, ensure_ascii=False),
+                    'error_indices_json': json.dumps(error_indices),
                 })
 
             messages.success(request, f'出库单 "{order.record_no}" 已提交，等待审批！')
@@ -1078,10 +1158,36 @@ def stockout_edit(request, pk):
             if errors:
                 for err in errors:
                     messages.error(request, err)
+                # 恢复已填写内容
+                restored = []
+                error_indices = []
+                for i, item in enumerate(items_data):
+                    supply_id = item.get('supply_id')
+                    qty = int(item.get('quantity', 0))
+                    try:
+                        supply = OfficeSupply.objects.get(pk=supply_id)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': supply.name,
+                            'specification': supply.specification or '',
+                            'quantity': qty,
+                            'stock': supply.available_quantity,
+                            'unit': supply.unit or '',
+                        })
+                    except OfficeSupply.DoesNotExist:
+                        error_indices.append(i)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': f'(不存在 ID:{supply_id})',
+                            'specification': '',
+                            'quantity': qty,
+                            'stock': 0,
+                            'unit': '',
+                        })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '修改出库单',
-                    'restored_items_json': '[]',
-                    'error_indices_json': '[]',
+                    'restored_items_json': json.dumps(restored, ensure_ascii=False),
+                    'error_indices_json': json.dumps(error_indices),
                 })
 
             # 阶段2：原子操作——先获取行锁、校验库存、再释放旧锁定、加新锁定
@@ -1135,10 +1241,43 @@ def stockout_edit(request, pk):
             except ValueError as e:
                 # 事务已自动回滚，旧锁定未释放，无需手动补偿
                 messages.error(request, str(e))
+                # 恢复已填写内容
+                restored = []
+                error_indices = []
+                for i, item in enumerate(items_data):
+                    supply_id = item.get('supply_id')
+                    qty = int(item.get('quantity', 0))
+                    try:
+                        supply = OfficeSupply.objects.get(pk=supply_id)
+                        # 检查是否库存不足
+                        sid = str(supply_id)
+                        released = old_locks.get(int(supply_id), 0) if 'old_locks' in locals() else 0
+                        effective_available = supply.available_quantity + released
+                        is_stock_error = sid in merged_new and merged_new[sid] > effective_available
+                        if is_stock_error:
+                            error_indices.append(i)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': supply.name,
+                            'specification': supply.specification or '',
+                            'quantity': qty,
+                            'stock': supply.available_quantity,
+                            'unit': supply.unit or '',
+                        })
+                    except OfficeSupply.DoesNotExist:
+                        error_indices.append(i)
+                        restored.append({
+                            'supply_id': supply_id,
+                            'name': f'(不存在 ID:{supply_id})',
+                            'specification': '',
+                            'quantity': qty,
+                            'stock': 0,
+                            'unit': '',
+                        })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '修改出库单',
-                    'restored_items_json': '[]',
-                    'error_indices_json': '[]',
+                    'restored_items_json': json.dumps(restored, ensure_ascii=False),
+                    'error_indices_json': json.dumps(error_indices),
                 })
 
             messages.success(request, f'出库单 "{order.record_no}" 更新成功！')

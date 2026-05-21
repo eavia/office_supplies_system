@@ -358,7 +358,15 @@
             ok = false;
         }
 
-        if (!ok) { e.preventDefault(); return; }
+        if (!ok) { e.preventDefault(); 
+            // 重置提交按钮状态（全局脚本已添加 loading，校验失败时需恢复）
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.classList.remove('btn-loading');
+                submitBtn.disabled = false;
+            }
+            return; 
+        }
 
         document.getElementById('id_items_json').value = JSON.stringify(items);
     });
