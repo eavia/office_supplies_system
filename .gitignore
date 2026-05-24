@@ -49,3 +49,7 @@ Thumbs.db
 staticfiles/
 media/
 .env
+
+# 数据库备份
+*.backup*
+*.sql
