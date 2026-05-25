@@ -255,6 +255,7 @@
                                 }
                                 searchInput.value = item.name;
                                 hiddenInput.value = item.id;
+                                tr.querySelector('.specCell').textContent = item.specification || '-';
                                 if (item.price && parseFloat(item.price) > 0) {
                                     priceInput.value = parseFloat(item.price).toFixed(2);
                                 }

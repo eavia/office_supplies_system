@@ -913,13 +913,14 @@ def stockout_create(request):
             items_data = []
 
         if form.is_valid() and items_data:
-            # 阶段1：合并相同物品并初步校验
+            # 阶段1：合并相同物品+备注并初步校验
             merged = {}
             errors = []
             error_indices = []
             for i, item in enumerate(items_data):
                 supply_id = item.get('supply_id')
                 qty = int(item.get('quantity', 0))
+                remark = item.get('remark', '')
                 try:
                     supply = OfficeSupply.objects.select_related('item_category').get(pk=supply_id)
                 except OfficeSupply.DoesNotExist:
@@ -936,8 +937,8 @@ def stockout_create(request):
                     errors.append(f'{supply.name}：出库数量必须大于 0')
                     error_indices.append(i)
                 else:
-                    sid = str(supply_id)
-                    merged[sid] = merged.get(sid, 0) + qty
+                    key = (str(supply_id), remark)
+                    merged[key] = merged.get(key, 0) + qty
 
             if errors:
                 for err in errors:
@@ -946,6 +947,7 @@ def stockout_create(request):
                 for item in items_data:
                     supply_id = item.get('supply_id')
                     qty = int(item.get('quantity', 0))
+                    remark = item.get('remark', '')
                     try:
                         supply = OfficeSupply.objects.get(pk=supply_id)
                         restored.append({
@@ -955,6 +957,7 @@ def stockout_create(request):
                             'quantity': qty,
                             'stock': supply.available_quantity,
                             'unit': supply.unit or '',
+                            'remark': remark,
                         })
                     except OfficeSupply.DoesNotExist:
                         restored.append({
@@ -964,6 +967,7 @@ def stockout_create(request):
                             'quantity': qty,
                             'stock': 0,
                             'unit': '',
+                            'remark': remark,
                         })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '出库登记',
@@ -972,10 +976,14 @@ def stockout_create(request):
                 })
 
             # 阶段2：原子性校验可用库存并锁定（防止并发超卖）
+            # 按物品汇总总需求量
+            sid_total = {}
+            for (sid, remark), qty in merged.items():
+                sid_total[sid] = sid_total.get(sid, 0) + qty
             lock_errors = []
             try:
                 with transaction.atomic():
-                    for sid, qty in list(merged.items()):
+                    for sid, qty in list(sid_total.items()):
                         supply = OfficeSupply.objects.select_for_update().get(pk=int(sid))
                         if qty > supply.available_quantity:
                             lock_errors.append(
@@ -990,7 +998,7 @@ def stockout_create(request):
                     order.status = '待审批'
                     order.save()
 
-                    for sid, qty in merged.items():
+                    for (sid, remark), qty in merged.items():
                         supply = OfficeSupply.objects.get(pk=int(sid))
                         # 创建明细
                         StockOutItem.objects.create(
@@ -999,6 +1007,7 @@ def stockout_create(request):
                             unit=supply.unit,
                             location=supply.location or '',
                             supplier=supply.supplier or '',
+                            remark=remark,
                         )
                         # 锁定库存（原子加法，使用update避免触发save中的F表达式比较）
                         OfficeSupply.objects.filter(pk=supply.pk).update(
@@ -1014,10 +1023,11 @@ def stockout_create(request):
                 for i, item in enumerate(items_data):
                     supply_id = item.get('supply_id')
                     qty = int(item.get('quantity', 0))
+                    remark = item.get('remark', '')
                     try:
                         supply = OfficeSupply.objects.get(pk=supply_id)
                         # 检查是否库存不足
-                        is_stock_error = str(supply_id) in merged and merged[str(supply_id)] > supply.available_quantity
+                        is_stock_error = str(supply_id) in sid_total and sid_total[str(supply_id)] > supply.available_quantity
                         if is_stock_error:
                             error_indices.append(i)
                         restored.append({
@@ -1027,6 +1037,7 @@ def stockout_create(request):
                             'quantity': qty,
                             'stock': supply.available_quantity,
                             'unit': supply.unit or '',
+                            'remark': remark,
                         })
                     except OfficeSupply.DoesNotExist:
                         error_indices.append(i)
@@ -1037,6 +1048,7 @@ def stockout_create(request):
                             'quantity': qty,
                             'stock': 0,
                             'unit': '',
+                            'remark': remark,
                         })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '出库登记',
@@ -1067,6 +1079,7 @@ def stockout_create(request):
                             'quantity': item.quantity,
                             'stock': supply.available_quantity,
                             'unit': supply.unit or '',
+                            'remark': '',
                         })
                     return render(request, 'inventory/stockout_form.html', {
                         'form': form,
@@ -1152,8 +1165,8 @@ def stockout_edit(request, pk):
                 elif qty <= 0:
                     errors.append(f'{supply.name}：出库数量必须大于 0')
                 else:
-                    sid = str(supply_id)
-                    merged_new[sid] = merged_new.get(sid, 0) + qty
+                    key = (str(supply_id), remark)
+                    merged_new[key] = merged_new.get(key, 0) + qty
 
             if errors:
                 for err in errors:
@@ -1164,6 +1177,7 @@ def stockout_edit(request, pk):
                 for i, item in enumerate(items_data):
                     supply_id = item.get('supply_id')
                     qty = int(item.get('quantity', 0))
+                    remark = item.get('remark', '')
                     try:
                         supply = OfficeSupply.objects.get(pk=supply_id)
                         restored.append({
@@ -1173,6 +1187,7 @@ def stockout_edit(request, pk):
                             'quantity': qty,
                             'stock': supply.available_quantity,
                             'unit': supply.unit or '',
+                            'remark': remark,
                         })
                     except OfficeSupply.DoesNotExist:
                         error_indices.append(i)
@@ -1183,6 +1198,7 @@ def stockout_edit(request, pk):
                             'quantity': qty,
                             'stock': 0,
                             'unit': '',
+                            'remark': remark,
                         })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '修改出库单',
@@ -1195,8 +1211,12 @@ def stockout_edit(request, pk):
                 with transaction.atomic():
                     # 2a. 获取所有涉及的物品行锁（按主键排序避免死锁）
                     old_items = list(order.items.select_related('supply').all())
+                    # 按物品汇总新需求量
+                    sid_total_new = {}
+                    for (sid, remark), qty in merged_new.items():
+                        sid_total_new[sid] = sid_total_new.get(sid, 0) + qty
                     all_supply_ids = sorted(set(
-                        [item.supply.pk for item in old_items] + [int(sid) for sid in merged_new.keys()]
+                        [item.supply.pk for item in old_items] + [int(sid) for sid in sid_total_new.keys()]
                     ))
                     supplies = {}
                     for sid in all_supply_ids:
@@ -1208,7 +1228,7 @@ def stockout_edit(request, pk):
                         old_locks[item.supply.pk] = old_locks.get(item.supply.pk, 0) + item.quantity
 
                     # 2c. 校验新明细库存（考虑释放旧锁定后的可用量）
-                    for sid, qty in merged_new.items():
+                    for sid, qty in sid_total_new.items():
                         sid_int = int(sid)
                         supply = supplies[sid_int]
                         released = old_locks.get(sid_int, 0)
@@ -1225,7 +1245,7 @@ def stockout_edit(request, pk):
                         )
                     form.save()
                     order.items.all().delete()
-                    for sid, qty in merged_new.items():
+                    for (sid, remark), qty in merged_new.items():
                         supply = supplies[int(sid)]
                         StockOutItem.objects.create(
                             order=order, supply=supply, quantity=qty,
@@ -1233,6 +1253,7 @@ def stockout_edit(request, pk):
                             unit=supply.unit,
                             location=supply.location or '',
                             supplier=supply.supplier or '',
+                            remark=remark,
                         )
                         OfficeSupply.objects.filter(pk=supply.pk).update(
                             locked_quantity=F('locked_quantity') + qty
@@ -1247,13 +1268,14 @@ def stockout_edit(request, pk):
                 for i, item in enumerate(items_data):
                     supply_id = item.get('supply_id')
                     qty = int(item.get('quantity', 0))
+                    remark = item.get('remark', '')
                     try:
                         supply = OfficeSupply.objects.get(pk=supply_id)
                         # 检查是否库存不足
                         sid = str(supply_id)
                         released = old_locks.get(int(supply_id), 0) if 'old_locks' in locals() else 0
                         effective_available = supply.available_quantity + released
-                        is_stock_error = sid in merged_new and merged_new[sid] > effective_available
+                        is_stock_error = sid in sid_total_new and sid_total_new[sid] > effective_available
                         if is_stock_error:
                             error_indices.append(i)
                         restored.append({
@@ -1263,6 +1285,7 @@ def stockout_edit(request, pk):
                             'quantity': qty,
                             'stock': supply.available_quantity,
                             'unit': supply.unit or '',
+                            'remark': remark,
                         })
                     except OfficeSupply.DoesNotExist:
                         error_indices.append(i)
@@ -1273,6 +1296,7 @@ def stockout_edit(request, pk):
                             'quantity': qty,
                             'stock': 0,
                             'unit': '',
+                            'remark': remark,
                         })
                 return render(request, 'inventory/stockout_form.html', {
                     'form': form, 'title': '修改出库单',
@@ -1298,6 +1322,7 @@ def stockout_edit(request, pk):
             'quantity': item.quantity,
             'stock': item.supply.available_quantity,
             'unit': item.supply.unit or '',
+            'remark': item.remark or '',
         })
 
     return render(request, 'inventory/stockout_form.html', {

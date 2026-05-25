@@ -66,6 +66,7 @@
                                 <col>
                                 <col style="width:100px">
                                 <col style="width:100px">
+                                <col>
                                 <col style="width:40px">
                             </colgroup>
                             <thead class="table-light">
@@ -75,6 +76,7 @@
                                     <th>规格型号</th>
                                     <th>出库数量</th>
                                     <th>当前库存</th>
+                                    <th>备注</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -165,20 +167,21 @@
     const itemsHint = document.getElementById('itemsHint');
     let rowCounter = 0;
 
-    function findExistingSupplyId(supplyId, excludeRowIdx) {
-        // 检查 supplyId 是否已在其他行中存在，返回行号或 null
+    function findExistingSupplyId(supplyId, remark, excludeRowIdx) {
+        // 检查 supplyId 是否已在其他行中存在，备注不同时允许重复
         let rowNum = 0;
         for (const tr of itemsBody.querySelectorAll('tr')) {
             rowNum++;
             const rowIdx = parseInt(tr.dataset.rowIdx);
             if (rowIdx === excludeRowIdx) continue;
             const existingId = tr.querySelector('.itemSupplyId').value;
-            if (existingId === String(supplyId)) return rowNum;
+            const existingRemark = tr.querySelector('.itemRemark').value.trim();
+            if (existingId === String(supplyId) && existingRemark === String(remark || '')) return rowNum;
         }
         return null;
     }
 
-    function addRow(supplyId, supplyName, supplySpec, qty, stockQty, stockUnit, isError) {
+    function addRow(supplyId, supplyName, supplySpec, qty, stockQty, stockUnit, remark, isError) {
         rowCounter++;
         const idx = rowCounter;
         const stockText = (stockQty !== undefined && stockQty !== null && stockQty !== '') ? stockQty + ' ' + (stockUnit || '') : '-';
@@ -201,6 +204,7 @@
             <td class="text-muted small align-middle text-nowrap itemSpec" data-row="${idx}">${supplySpec || '-'}</td>
             <td><input type="number" class="form-control form-control-sm itemQty ${isError ? 'is-invalid' : ''}" min="1" value="${qty || 1}" data-row="${idx}"></td>
             <td class="text-center text-nowrap itemStock ${stockQty !== undefined && stockQty !== null && stockQty !== '' && Number(stockQty) <= 0 ? 'text-danger fw-bold' : ''}" data-row="${idx}">${stockText}</td>
+            <td><input type="text" class="form-control form-control-sm itemRemark" placeholder="备注" data-row="${idx}" value="${remark || ''}"></td>
             <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm removeRowBtn" data-row="${idx}"><i class="fas fa-trash-alt"></i></button></td>
         `;
         itemsBody.appendChild(tr);
@@ -242,8 +246,10 @@
                             const availText = item.available_quantity !== undefined ? item.available_quantity : item.quantity;
                             btn.innerHTML = `<span>${item.name}${item.specification ? ' (' + item.specification + ')' : ''}</span><span class="badge bg-light text-dark">可用 ${availText} ${item.unit || ''}</span>`;
                             btn.addEventListener('click', () => {
-                                // 检查是否已存在相同物品
-                                const existing = findExistingSupplyId(item.id, idx);
+                                const remarkInput = tr.querySelector('.itemRemark');
+                                const currentRemark = remarkInput ? remarkInput.value.trim() : '';
+                                // 检查是否已存在相同物品且备注相同
+                                const existing = findExistingSupplyId(item.id, currentRemark, idx);
                                 if (existing) {
                                     alert(`物品「${item.name}」已在第 ${existing} 行，请修改已有行的数量，不要重复添加。`);
                                     return;
@@ -317,6 +323,7 @@
                 item.quantity,
                 item.stock,
                 item.unit,
+                item.remark || '',
                 isError
             );
         });
@@ -347,8 +354,9 @@
         itemsBody.querySelectorAll('tr').forEach(tr => {
             const supplyId = tr.querySelector('.itemSupplyId').value;
             const qty = parseInt(tr.querySelector('.itemQty').value) || 0;
+            const remark = tr.querySelector('.itemRemark').value.trim();
             if (supplyId && qty > 0) {
-                items.push({ supply_id: supplyId, quantity: qty });
+                items.push({ supply_id: supplyId, quantity: qty, remark: remark });
             }
         });
 

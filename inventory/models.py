@@ -378,6 +378,7 @@ class StockOutItem(models.Model):
     unit = models.CharField('单位快照', max_length=20, default='个')
     location = models.CharField('存放位置快照', max_length=100, blank=True)
     supplier = models.CharField('供应商快照', max_length=100, blank=True)
+    remark = models.CharField('备注', max_length=200, blank=True)
 
     class Meta:
         verbose_name = '出库明细'

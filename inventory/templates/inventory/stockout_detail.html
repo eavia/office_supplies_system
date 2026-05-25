@@ -128,6 +128,7 @@
                                 <th>规格型号</th>
                                 <th>单位</th>
                                 <th style="width:120px">数量</th>
+                                <th>备注</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -138,6 +139,7 @@
                                 <td>{{ item.supply.specification|default:"-" }}</td>
                                 <td class="text-center">{{ item.supply.unit }}</td>
                                 <td class="text-center">{{ item.quantity }}</td>
+                                <td>{{ item.remark|default:"-" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
