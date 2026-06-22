@@ -1174,6 +1174,7 @@ def stockout_edit(request, pk):
             for item in items_data:
                 supply_id = item.get('supply_id')
                 qty = int(item.get('quantity', 0))
+                remark = item.get('remark', '')
                 try:
                     supply = OfficeSupply.objects.select_related('item_category').get(pk=supply_id)
                 except OfficeSupply.DoesNotExist:
