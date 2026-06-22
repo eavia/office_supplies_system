@@ -1,0 +1,97 @@
+{% extends 'inventory/base.html' %}
+{% block page_title %}库存打印{% endblock %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        .no-print { display: none !important; }
+        .sidebar { display: none !important; }
+        .topbar { display: none !important; }
+        body { background: #fff !important; }
+        .main-content { margin-left: 0 !important; padding: 10px !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .table th, .table td { border-color: #333 !important; padding: 4px 6px !important; font-size: 12px; }
+        thead { display: table-header-group; }
+        @page { size: A4 portrait; margin: 12mm; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4><i class="fas fa-box me-2" style="color:#4299e1;"></i>库存打印预览</h4>
+    <div>
+        <a href="{% url 'supply_list' %}" class="btn btn-outline-secondary me-2">
+            <i class="fas fa-arrow-left me-1"></i>返回列表
+        </a>
+        <button class="btn btn-primary" onclick="doPrint()">
+            <i class="fas fa-print me-1"></i>打印
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="text-center mb-3">办公用品库存一览表</h5>
+        <p class="text-center text-muted small mb-3">打印日期：{% now "Y-m-d" %}　｜　共 {{ supplies.count }} 项</p>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>物品编码</th>
+                        <th>物品名称</th>
+                        <th>类别</th>
+                        <th>规格</th>
+                        <th>单位</th>
+                        <th>库存数量</th>
+                        <th>安全库存</th>
+                        <th>状态</th>
+                        <th>存放位置</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supply in supplies %}
+                    <tr>
+                        <td class="text-center text-muted small">{{ forloop.counter }}</td>
+                        <td><strong>{{ supply.code }}</strong></td>
+                        <td>{{ supply.name }}</td>
+                        <td>{{ supply.item_category.name|default:"未分类" }}</td>
+                        <td>{{ supply.specification|default:"-" }}</td>
+                        <td>{{ supply.unit }}</td>
+                        <td><strong>{{ supply.quantity }}</strong></td>
+                        <td>{{ supply.safety_stock }}</td>
+                        <td>
+                            {% if supply.status == '正常' %}
+                            <span class="badge bg-success">正常</span>
+                            {% elif supply.status == '低库存' %}
+                            <span class="badge bg-warning text-dark">低库存</span>
+                            {% else %}
+                            <span class="badge bg-secondary">停用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ supply.location|default:"-" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">暂无库存数据</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function doPrint() {
+    var origTitle = document.title;
+    document.title = '';
+    window.print();
+    document.title = origTitle;
+}
+</script>
+{% endblock %}

@@ -14,6 +14,9 @@
             <a href="{% url 'supply_export' %}" class="btn btn-info">
                 <i class="fas fa-download me-1"></i> 导出
             </a>
+            <a href="{% url 'supply_print' %}?q={{ query }}&category={{ category_filter }}" class="btn btn-outline-secondary" target="_blank">
+                <i class="fas fa-print me-1"></i> 打印
+            </a>
         </div>
         <button class="btn btn-sm btn-outline-secondary search-filter-toggle" type="button">
             <i class="fas fa-filter me-1"></i>展开筛选

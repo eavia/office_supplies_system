@@ -232,6 +232,28 @@ def supply_list(request):
 
 
 @login_required
+def supply_print(request):
+    """库存一览打印页（全部物品，无分页）"""
+    query = request.GET.get('q', '')
+    category_id = request.GET.get('category', '')
+
+    supplies = OfficeSupply.objects.select_related('item_category').all()
+
+    if query:
+        supplies = supplies.filter(
+            Q(code__icontains=query) | Q(name__icontains=query)
+        )
+    if category_id:
+        supplies = supplies.filter(item_category_id=category_id)
+
+    return render(request, 'inventory/supply_print.html', {
+        'supplies': supplies,
+        'query': query,
+        'category_filter': category_id,
+    })
+
+
+@login_required
 def supply_name_search(request):
     """API: 按拼音首字母/编码/名称模糊匹配返回已有物品列表"""
     try:

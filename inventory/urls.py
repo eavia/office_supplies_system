@@ -15,6 +15,7 @@ urlpatterns = [
     path('supplies/<int:pk>/add-stock/', views.supply_add_stock, name='supply_add_stock'),
     path('supplies/export/', views.supply_export_excel, name='supply_export'),
     path('supplies/import/', views.supply_import_excel, name='supply_import'),
+    path('supplies/print/', views.supply_print, name='supply_print'),
     path('supplies/template/', views.supply_template_download, name='supply_template'),
     
     # 入库单管理
