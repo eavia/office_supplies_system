@@ -313,3 +313,7 @@ class ProcessManagementTestCase(TestCase):
         self.assertRedirects(response, '/process-management/?type=stockout')
         order.refresh_from_db()
         self.assertEqual(order.status, '已批准')
+
+    def test_superuser_profile_uses_admin_role(self):
+        self.assertEqual(self.admin.profile.role, 'admin')
+        self.assertEqual(self.admin.profile.role_display, '管理员')
