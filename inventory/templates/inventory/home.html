@@ -3,7 +3,79 @@
 {% block title %}系统首页 - 办公用品管理系统{% endblock %}
 {% block page_title %}系统首页{% endblock %}
 
+{% block extra_css %}
+<style>
+    .home-intro p {
+        color: var(--brand-blue);
+        font-size: 0.875rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+    }
+
+    .home-intro h1 {
+        margin: 0;
+        color: var(--text-primary);
+        font-size: clamp(1.75rem, 3vw, 2.35rem);
+        font-weight: 700;
+        line-height: 1.12;
+        letter-spacing: -0.035em;
+    }
+
+    .home-intro span {
+        display: block;
+        margin-top: 0.5rem;
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+    }
+
+    .stat-card {
+        transition: transform 0.32s var(--ease-standard), box-shadow 0.32s var(--ease-standard);
+        will-change: transform;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-elevated);
+    }
+
+    .dashboard-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .dashboard-card-header a {
+        color: var(--brand-blue);
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .dashboard-card-header a:active {
+        transform: scale(0.97);
+    }
+
+    .quick-action.is-pressed {
+        transform: scale(0.97);
+        transition-duration: 0.08s;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .stat-card:hover {
+            transform: none;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="home-intro mb-4">
+    <p class="mb-1">工作台</p>
+    <h1>今天，先完成最重要的事务。</h1>
+    <span>查看库存、处理审批或直接创建新的业务单据。</span>
+</div>
+
 <!-- 统计卡片 -->
 <div class="row g-4 mb-4">
     <div class="col-md-3">
@@ -136,8 +208,9 @@
 <div class="row g-4">
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header dashboard-card-header">
                 <h5 class="mb-0"><i class="fas fa-file-import me-2" style="color:#0075de;"></i>最近入库单</h5>
+                <a href="{% url 'stockin_application_list' %}">查看全部</a>
             </div>
             <div class="card-body">
                 {% if recent_applications %}
@@ -179,8 +252,9 @@
     </div>
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header dashboard-card-header">
                 <h5 class="mb-0"><i class="fas fa-sign-out-alt me-2" style="color:#48bb78;"></i>最近出库单</h5>
+                <a href="{% url 'stockout_list' %}">查看全部</a>
             </div>
             <div class="card-body">
                 {% if recent_outs %}
@@ -230,61 +304,16 @@
 {% block extra_js %}
 <script>
 (function() {
-    // ===== 3D Tilt Effect for Stat Cards =====
-    var cards = document.querySelectorAll('.stat-card-3d');
-    
-    cards.forEach(function(card) {
-        card.addEventListener('mousemove', function(e) {
-            var rect = card.getBoundingClientRect();
-            var x = e.clientX - rect.left;
-            var y = e.clientY - rect.top;
-            var centerX = rect.width / 2;
-            var centerY = rect.height / 2;
-            
-            var rotateX = ((y - centerY) / centerY) * -4;
-            var rotateY = ((x - centerX) / centerX) * 4;
-            
-            card.style.transform = 'perspective(1000px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg) scale3d(1.02, 1.02, 1.02)';
-            card.style.boxShadow = '0 8px 30px rgba(0,0,0,0.12), 0 16px 48px rgba(0,0,0,0.08)';
-        });
-        
-        card.addEventListener('mouseleave', function() {
-            card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
-            card.style.boxShadow = '';
-        });
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-        card.addEventListener('touchmove', function(e) {
-            var touch = e.touches[0];
-            var rect = card.getBoundingClientRect();
-            var x = touch.clientX - rect.left;
-            var y = touch.clientY - rect.top;
-            var centerX = rect.width / 2;
-            var centerY = rect.height / 2;
-            
-            var rotateX = ((y - centerY) / centerY) * -3;
-            var rotateY = ((x - centerX) / centerX) * 3;
-            
-            card.style.transform = 'perspective(1000px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg) scale3d(1.01, 1.01, 1.01)';
-            card.style.boxShadow = '0 8px 30px rgba(0,0,0,0.1)';
-        }, { passive: true });
-
-        card.addEventListener('touchend', function() {
-            card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
-            card.style.boxShadow = '';
+    document.querySelectorAll('.quick-action').forEach(function(action) {
+        action.addEventListener('pointerdown', function() {
+            action.classList.add('is-pressed');
         });
-    });
-
-    // ===== Quick Action Touch Feedback =====
-    var quickActions = document.querySelectorAll('.quick-action');
-    quickActions.forEach(function(action) {
-        action.addEventListener('touchstart', function() {
-            action.style.transform = 'scale(0.95)';
-        }, { passive: true });
-        action.addEventListener('touchend', function() {
-            action.style.transform = '';
-        });
-        action.addEventListener('touchcancel', function() {
-            action.style.transform = '';
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(eventName) {
+            action.addEventListener(eventName, function() {
+                action.classList.remove('is-pressed');
+            });
         });
     });
 })();

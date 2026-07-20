@@ -527,7 +527,7 @@ class Profile(models.Model):
     name = models.CharField('姓名', max_length=50, blank=True)
     phone = models.CharField('手机号', max_length=20, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='所属部门')
-    applied_role = models.CharField('申请角色', max_length=20, choices=get_role_choices, default='staff')
+    applied_role = models.CharField('申请角色', max_length=20, choices=get_role_choices(), default='staff')
     is_pending = models.BooleanField('待审核', default=False, help_text='注册后待管理员审核')
 
     class Meta:
