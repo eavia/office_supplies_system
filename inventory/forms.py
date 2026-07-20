@@ -79,7 +79,7 @@ class StockInApplicationForm(forms.ModelForm):
         widgets = {
             'department': forms.Select(attrs={'class': 'form-select'}),
             'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '申请原因'}),
-            'stockin_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'stockin_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
         }
 
     def __init__(self, *args, **kwargs):
@@ -88,6 +88,8 @@ class StockInApplicationForm(forms.ModelForm):
         self.fields['department'].queryset = Department.objects.filter(pk__in=[d.pk for d in active_departments]).order_by('sort_order', 'code')
         self.fields['department'].label_from_instance = lambda obj: f"{obj.code} {obj.name}"
         self.fields['department'].required = True
+        self.fields['stockin_date'].required = False
+        self.fields['stockin_date'].input_formats = ['%Y-%m-%d']
         self.dept_pinyin_json = json.dumps({
             str(d.id): _get_pinyin_initials(d.name)
             for d in active_departments
