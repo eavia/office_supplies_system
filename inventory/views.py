@@ -1264,6 +1264,16 @@ def stockout_edit(request, pk):
                             )
 
                     # 2d. 全部通过，释放旧锁定、保存表单、重建明细、加新锁定
+                    # 编辑/修改后重置审批状态：回到待审批，清除旧审批记录
+                    if order.status in ('待仓管审批', '已拒绝'):
+                        order.status = '待审批'
+                        order.dept_approver = None
+                        order.dept_approval_time = None
+                        order.dept_approval_comment = ''
+                        order.approver = None
+                        order.approval_time = None
+                        order.approval_comment = ''
+
                     for sid, released in old_locks.items():
                         OfficeSupply.objects.filter(pk=sid).update(
                             locked_quantity=F('locked_quantity') - released
