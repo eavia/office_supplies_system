@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import OfficeSupply, StockInApplication, StockOutRecord, StockOutItem, ITDevice, ComputerType, ReturnApplication, ItemCategory
+from .models import OfficeSupply, StockInApplication, StockOutRecord, StockOutItem, ReturnApplication, ItemCategory
 
 
 @admin.register(ItemCategory)
@@ -36,20 +36,6 @@ class StockOutRecordAdmin(admin.ModelAdmin):
 class StockOutItemAdmin(admin.ModelAdmin):
     list_display = ('__str__', 'order', 'supply', 'quantity')
     search_fields = ('order__record_no', 'supply__name')
-
-
-@admin.register(ITDevice)
-class ITDeviceAdmin(admin.ModelAdmin):
-    list_display = ('device_no', 'device_type', 'asset_no', 'serial_no', 'user', 'department', 'status')
-    list_filter = ('status', 'device_type__category')
-    search_fields = ('device_no', 'asset_no', 'serial_no')
-
-
-@admin.register(ComputerType)
-class ComputerTypeAdmin(admin.ModelAdmin):
-    list_display = ('type_code', 'type_name', 'category', 'brand', 'model', 'warranty_months')
-    list_filter = ('category',)
-    search_fields = ('type_code', 'type_name')
 
 
 @admin.register(ReturnApplication)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-办公用品管理系统 - Windows 启动器（系统托盘版）
+物品仓储管理 - Windows 启动器（系统托盘版）
 打包后双击即可运行，自动启动 Django 服务并打开浏览器
 隐藏控制台窗口，最小化到系统托盘
 
@@ -114,7 +114,7 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
     tb_text = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
     _log(f"未处理的异常:\n{tb_text}")
     _show_error(
-        "办公用品管理系统 - 启动失败",
+        "物品仓储管理 - 启动失败",
         f"程序遇到错误，请查看日志文件:\n{LOG_FILE}\n\n"
         f"错误: {exc_type.__name__}: {exc_value}\n\n"
         f"详细信息:\n{tb_text[-500:]}"
@@ -361,7 +361,7 @@ class TrayApp:
         self.icon = pystray.Icon(
             "OfficeSuppliesSystem",
             icon_image,
-            f"办公用品管理系统 (端口 {self.port})",
+            f"物品仓储管理 (端口 {self.port})",
             menu
         )
         _log("系统托盘已创建，进入事件循环")

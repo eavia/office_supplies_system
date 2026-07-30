@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-办公用品管理系统 - Windows 启动器（简化版）
+物品仓储管理 - Windows 启动器（简化版）
 打包后双击即可运行，自动启动 Django 服务并打开浏览器
 """
 
@@ -44,7 +44,7 @@ def main():
     sys.path.insert(0, project_dir)
     
     print("=" * 60)
-    print("  办公用品管理系统")
+    print("  物品仓储管理")
     print("=" * 60)
     print()
     

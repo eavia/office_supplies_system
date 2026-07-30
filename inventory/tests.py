@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
+from django.apps import apps
 from django.contrib.auth.models import User
-from inventory.models import ItemCategory, OfficeSupply, StockInApplication, StockOutRecord, ITDevice, ComputerType, ReturnApplication
+from inventory.models import ItemCategory, OfficeSupply, StockInApplication, StockOutRecord, ReturnApplication
 
 
 class SystemTestCase(TestCase):
@@ -23,6 +24,10 @@ class SystemTestCase(TestCase):
             description='办公文具类',
             is_active=True,
         )
+        from inventory.models import Department
+        self.department = Department.objects.create(name='测试部门')
+        self.user.profile.department = self.department
+        self.user.profile.save(update_fields=['department'])
 
         self.supply = OfficeSupply.objects.create(
             code='BGY001',
@@ -35,22 +40,7 @@ class SystemTestCase(TestCase):
             price=25.00
         )
         
-        self.computer_type = ComputerType.objects.create(
-            type_code='PC',
-            type_name='台式机',
-            category='主机',
-            brand='联想',
-            model='ThinkCentre'
-        )
-        
-        self.device = ITDevice.objects.create(
-            device_no='PC001',
-            device_type=self.computer_type,
-            asset_no='ZC2024001',
-            serial_no='SN123456',
-            price=5000.00,
-            status='使用中'
-        )
+
     
     # ========== 首页测试 ==========
     def test_home_page(self):
@@ -104,11 +94,10 @@ class SystemTestCase(TestCase):
     def test_stockin_application_create(self):
         """测试入库单创建（多物品）"""
         import json
-        from inventory.models import Department
-        dept = Department.objects.first()
         response = self.client.post('/stockin/applications/create/', {
-            'department': str(dept.id) if dept else '',
+            'department': str(self.department.id),
             'reason': '补充库存',
+            'stockin_date': '2026-07-30',
             'items_json': json.dumps([{'supply_id': self.supply.id, 'quantity': 50}])
         })
         self.assertEqual(response.status_code, 302)
@@ -132,20 +121,19 @@ class SystemTestCase(TestCase):
     def test_stockout_create(self):
         """测试出库创建（多物品）"""
         import json
-        from inventory.models import Department
-        dept = Department.objects.first()
         response = self.client.post('/stockout/create/', {
             'recipient': '张三',
-            'department': str(dept.id) if dept else '',
+            'department': str(self.department.id),
             'purpose': '办公使用',
             'out_type': '领用',
             'items_json': json.dumps([{'supply_id': self.supply.id, 'quantity': 10}])
         })
         self.assertEqual(response.status_code, 302)
-        # 检查库存减少
+        # 出库申请提交后仅锁定库存，待审批通过才扣减实际库存。
         self.supply.refresh_from_db()
-        self.assertEqual(self.supply.quantity, 90)
-        print("✓ 出库创建功能正常，库存自动减少")
+        self.assertEqual(self.supply.quantity, 100)
+        self.assertEqual(self.supply.locked_quantity, 10)
+        print("✓ 出库创建功能正常，库存已锁定等待审批")
     
     # ========== 归还申请测试 ==========
     def test_return_list(self):
@@ -154,46 +142,7 @@ class SystemTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         print("✓ 归还列表页正常")
     
-    # ========== IT设备测试 ==========
-    def test_device_list(self):
-        """测试设备列表"""
-        response = self.client.get('/devices/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'PC001')
-        print("✓ 设备列表页正常")
-    
-    def test_device_create(self):
-        """测试设备创建"""
-        response = self.client.post('/devices/create/', {
-            'device_no': 'PC002',
-            'device_type': self.computer_type.id,
-            'asset_no': 'ZC2024002',
-            'serial_no': 'SN789012',
-            'price': '6000.00',
-            'location': '办公室A',
-            'user': '李四',
-            'department': '',
-            'status': '使用中'
-        })
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(ITDevice.objects.filter(device_no='PC002').exists())
-        print("✓ 设备创建功能正常")
-    
-    def test_device_export(self):
-        """测试设备导出"""
-        response = self.client.get('/devices/export/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 
-                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        print("✓ 设备导出功能正常")
-    
-    # ========== 计算机类型测试 ==========
-    def test_computer_type_list(self):
-        """测试计算机类型列表"""
-        response = self.client.get('/computer-types/')
-        self.assertEqual(response.status_code, 200)
-        print("✓ 计算机类型列表页正常")
-    
+
     # ========== 统计报表测试 ==========
     def test_stockin_statistics(self):
         """测试入库统计"""
@@ -216,10 +165,39 @@ class SystemTestCase(TestCase):
                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         print("✓ 办公用品导入模板下载正常")
     
-    def test_device_template_download(self):
-        """测试IT设备模板下载"""
-        response = self.client.get('/devices/template/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 
-                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        print("✓ IT设备导入模板下载正常")
+class ITDeviceModuleRemovalTests(TestCase):
+    """IT设备管理模块必须不存在。"""
+
+    def test_it_device_models_are_not_registered(self):
+        model_names = {
+            model.__name__
+            for model in apps.get_app_config('inventory').get_models()
+        }
+        self.assertNotIn('ITDevice', model_names)
+        self.assertNotIn('ComputerType', model_names)
+
+    def test_it_device_routes_return_not_found(self):
+        for path in (
+            '/devices/',
+            '/devices/create/',
+            '/devices/export/',
+            '/devices/import/',
+            '/devices/template/',
+            '/computer-types/',
+            '/computer-types/create/',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_it_device_tables_are_absent(self):
+        from django.db import connection
+
+        table_names = set(connection.introspection.table_names())
+        self.assertNotIn('inventory_itdevice', table_names)
+        self.assertNotIn('inventory_computertype', table_names)
+
+    def test_it_device_permission_module_is_not_available(self):
+        from inventory.models import RolePermission
+
+        module_keys = {key for key, _ in RolePermission.MODULE_CHOICES}
+        self.assertNotIn('it_device', module_keys)

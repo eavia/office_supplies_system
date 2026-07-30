@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-办公用品管理系统 — 数据库升级脚本 (2026-04-30)
+物品仓储管理 — 数据库升级脚本 (2026-04-30)
 ==============================================
 独立脚本，不依赖 Django migration 系统。
 直接对 SQLite 数据库执行 DDL 变更。
@@ -327,7 +327,7 @@ def apply_all(conn, db_path, skip_backup=False):
 # ═══════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description='办公用品管理系统数据库升级')
+    parser = argparse.ArgumentParser(description='物品仓储管理数据库升级')
     parser.add_argument('--apply', action='store_true', help='自动执行升级（含备份）')
     parser.add_argument('--check', action='store_true', help='仅检查升级状态')
     parser.add_argument('--no-backup', action='store_true', help='跳过数据库备份（危险！仅测试用）')

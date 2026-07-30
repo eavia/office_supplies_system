@@ -1,7 +1,4 @@
-from inventory.models import (
-    StockInApplication, StockOutOrder, ITDevice, OfficeSupply,
-    Profile
-)
+from inventory.models import StockInApplication, StockOutOrder, OfficeSupply, Profile
 
 
 def get_user_role(user):
@@ -48,16 +45,6 @@ def _get_visible_queryset_fallback(user, model):
             return model.objects.filter(operator=user)
         return model.objects.filter(operator=user)
 
-    if model == ITDevice:
-        if role == 'warehouse':
-            return model.objects.all()
-        if role == 'dept_head':
-            profile = getattr(user, 'profile', None)
-            if profile and profile.department:
-                return model.objects.filter(department=profile.department)
-            return model.objects.none()
-        return model.objects.filter(department=getattr(
-            getattr(user, 'profile', None), 'department', None))
 
     if model == OfficeSupply:
         return model.objects.all()

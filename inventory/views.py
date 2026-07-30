@@ -10,11 +10,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .models import (OfficeSupply, StockInApplication, StockInItem, StockOutRecord, 
-                    StockOutOrder, StockOutItem, ITDevice, ComputerType, ReturnApplication, 
+                    StockOutOrder, StockOutItem, ReturnApplication, 
                     ItemCategory, Department, Profile, SystemRole,
                     get_role_choices, get_role_group_map, get_role_display_name)
 from .forms import (OfficeSupplyForm, StockInApplicationForm, StockInApprovalForm,
-                    StockOutForm, ReturnApplicationForm, ComputerTypeForm, ITDeviceForm, 
+                    StockOutForm, ReturnApplicationForm,
                     ExcelImportForm, ItemCategoryForm, DepartmentForm,
                     RegisterForm, UserEditForm, PasswordResetForm, ProfileForm)
 from .decorators import role_required
@@ -112,7 +112,7 @@ def home(request):
     visible_stockout = get_visible_queryset(request.user, StockOutOrder)
     pending_count = visible_stockin.filter(status='待审批').count()
     pending_stockout_count = visible_stockout.filter(status='待审批').count()
-    device_count = get_visible_queryset(request.user, ITDevice).count()
+
     
     # 最近入库单
     recent_applications = visible_stockin.select_related('applicant', 'department').prefetch_related('items__supply').order_by('-created_at')[:5]
@@ -125,7 +125,7 @@ def home(request):
         'low_stock_count': low_stock_count,
         'pending_count': pending_count,
         'pending_stockout_count': pending_stockout_count,
-        'device_count': device_count,
+
         'recent_applications': recent_applications,
         'recent_outs': recent_outs,
     }
@@ -1529,150 +1529,6 @@ def return_approval(request, pk):
     return render(request, 'inventory/return_approval.html', {'ret': ret})
 
 
-# ==================== IT设备管理 ====================
-@login_required
-def device_list(request):
-    """计算机资源一览"""
-    query = request.GET.get('q', '')
-    category = request.GET.get('category', '')
-    status = request.GET.get('status', '')
-    
-    devices = ITDevice.objects.select_related('device_type').all()
-    
-    if query:
-        devices = devices.filter(
-            Q(device_no__icontains=query) | Q(device_type__type_name__icontains=query)
-        )
-    if category:
-        devices = devices.filter(device_type__category=category)
-    if status:
-        devices = devices.filter(status=status)
-    
-    paginator = Paginator(devices, 20)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    categories = ComputerType.objects.values_list('category', flat=True).distinct()
-    
-    return render(request, 'inventory/device_list.html', {
-        'page_obj': page_obj,
-        'categories': categories,
-        'query': query,
-        'category_filter': category,
-        'status_filter': status,
-    })
-
-
-@login_required
-def device_create(request):
-    """设备登记"""
-    if request.method == 'POST':
-        form = ITDeviceForm(request.POST)
-        if form.is_valid():
-            device = form.save()
-            messages.success(request, f'设备 "{device.device_no}" 登记成功！')
-            return redirect('device_list')
-    else:
-        form = ITDeviceForm()
-    
-    return render(request, 'inventory/device_form.html', {
-        'form': form,
-        'title': '设备登记',
-        'action': '创建'
-    })
-
-
-@login_required
-def device_update(request, pk):
-    """设备信息变更"""
-    device = get_object_or_404(ITDevice, pk=pk)
-    if request.method == 'POST':
-        form = ITDeviceForm(request.POST, instance=device)
-        if form.is_valid():
-            form.save()
-            messages.success(request, '设备信息更新成功！')
-            return redirect('device_list')
-    else:
-        form = ITDeviceForm(instance=device)
-    
-    return render(request, 'inventory/device_form.html', {
-        'form': form,
-        'device': device,
-        'title': '设备变更',
-        'action': '更新'
-    })
-
-
-@login_required
-def device_delete(request, pk):
-    """设备删除"""
-    device = get_object_or_404(ITDevice, pk=pk)
-    if request.method == 'POST':
-        device.delete()
-        messages.success(request, '设备记录已删除！')
-        return redirect('device_list')
-    return render(request, 'inventory/device_confirm_delete.html', {'device': device})
-
-
-# ==================== 计算机类型管理 ====================
-@login_required
-def computer_type_list(request):
-    """计算机类型一览"""
-    types = ComputerType.objects.all().order_by('type_code')
-    return render(request, 'inventory/computer_type_list.html', {'types': types})
-
-
-@login_required
-def computer_type_create(request):
-    """类型追加"""
-    if request.method == 'POST':
-        form = ComputerTypeForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, '计算机类型添加成功！')
-            return redirect('computer_type_list')
-    else:
-        form = ComputerTypeForm()
-    
-    return render(request, 'inventory/computer_type_form.html', {
-        'form': form,
-        'title': '类型追加',
-        'action': '创建'
-    })
-
-
-@login_required
-def computer_type_update(request, pk):
-    """类型变更"""
-    comp_type = get_object_or_404(ComputerType, pk=pk)
-    if request.method == 'POST':
-        form = ComputerTypeForm(request.POST, instance=comp_type)
-        if form.is_valid():
-            form.save()
-            messages.success(request, '计算机类型更新成功！')
-            return redirect('computer_type_list')
-    else:
-        form = ComputerTypeForm(instance=comp_type)
-    
-    return render(request, 'inventory/computer_type_form.html', {
-        'form': form,
-        'comp_type': comp_type,
-        'title': '类型变更',
-        'action': '更新'
-    })
-
-
-@login_required
-def computer_type_delete(request, pk):
-    """类型删除"""
-    comp_type = get_object_or_404(ComputerType, pk=pk)
-    if request.method == 'POST':
-        comp_type.delete()
-        messages.success(request, '计算机类型已删除！')
-        return redirect('computer_type_list')
-    return render(request, 'inventory/computer_type_confirm_delete.html', {'comp_type': comp_type})
-
-
 # ==================== 统计报表 ====================
 @login_required
 def stockin_statistics(request):
@@ -1940,173 +1796,6 @@ def supply_import_excel(request):
 
 
 @login_required
-def device_export_excel(request):
-    """IT设备表导出Excel"""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "IT设备"
-    
-    # 表头样式
-    header_font = Font(bold=True, size=12, color="FFFFFF")
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    header_alignment = Alignment(horizontal="center", vertical="center")
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    # 表头
-    headers = ['设备编号', '设备类型', '资产编号', '序列号', '采购日期', '采购价格',
-               '存放位置', '使用人', '使用部门', '状态', '备注']
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_alignment
-        cell.border = border
-    
-    # 数据
-    devices = ITDevice.objects.select_related('device_type').all()
-    for row, device in enumerate(devices, 2):
-        ws.cell(row=row, column=1, value=device.device_no).border = border
-        ws.cell(row=row, column=2, value=device.device_type.type_name if device.device_type else '').border = border
-        ws.cell(row=row, column=3, value=device.asset_no or '').border = border
-        ws.cell(row=row, column=4, value=device.serial_no or '').border = border
-        ws.cell(row=row, column=5, value=device.purchase_date.strftime('%Y-%m-%d') if device.purchase_date else '').border = border
-        ws.cell(row=row, column=6, value=float(device.price)).border = border
-        ws.cell(row=row, column=7, value=device.location or '').border = border
-        ws.cell(row=row, column=8, value=device.user or '').border = border
-        ws.cell(row=row, column=9, value=device.department or '').border = border
-        ws.cell(row=row, column=10, value=device.status).border = border
-        ws.cell(row=row, column=11, value=device.remarks or '').border = border
-    
-    # 调整列宽
-    column_widths = [15, 20, 15, 20, 15, 12, 20, 15, 20, 10, 30]
-    for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[chr(64 + i)].width = width
-    
-    # 生成响应
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-    
-    response = HttpResponse(
-        output.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = f'attachment; filename="IT设备_{timezone.now().strftime("%Y%m%d")}.xlsx"'
-    return response
-
-
-@login_required
-def device_import_excel(request):
-    """IT设备表导入Excel"""
-    if request.method == 'POST':
-        form = ExcelImportForm(request.POST, request.FILES)
-        if form.is_valid():
-            excel_file = request.FILES['excel_file']
-            update_existing = form.cleaned_data.get('update_existing', False)
-            
-            try:
-                wb = load_workbook(excel_file)
-                ws = wb.active
-                
-                imported_count = 0
-                updated_count = 0
-                error_count = 0
-                errors = []
-                
-                # 从第2行开始读取（跳过表头）
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
-                    try:
-                        if not row[0] or not row[1]:  # 设备编号和设备类型必填
-                            continue
-                        
-                        device_no = str(row[0]).strip()
-                        type_name = str(row[1]).strip()
-                        asset_no = str(row[2] or '').strip()
-                        serial_no = str(row[3] or '').strip()
-                        purchase_date = row[4]
-                        price = float(row[5] or 0)
-                        location = str(row[6] or '').strip()
-                        user = str(row[7] or '').strip()
-                        department = str(row[8] or '').strip()
-                        status = str(row[9] or '库存').strip()
-                        remarks = str(row[10] or '').strip()
-                        
-                        # 查找或创建设备类型
-                        device_type, _ = ComputerType.objects.get_or_create(
-                            type_name=type_name,
-                            defaults={
-                                'type_code': f'TYPE{ComputerType.objects.count() + 1:03d}',
-                                'category': '主机',
-                                'warranty_months': 36
-                            }
-                        )
-                        
-                        # 检查是否已存在
-                        existing = ITDevice.objects.filter(device_no=device_no).first()
-                        
-                        if existing and update_existing:
-                            # 更新现有记录
-                            existing.device_type = device_type
-                            existing.asset_no = asset_no
-                            existing.serial_no = serial_no
-                            if purchase_date and isinstance(purchase_date, str):
-                                existing.purchase_date = purchase_date
-                            existing.price = price
-                            existing.location = location
-                            existing.user = user
-                            existing.department = department
-                            existing.status = status
-                            existing.remarks = remarks
-                            existing.save()
-                            updated_count += 1
-                        elif not existing:
-                            # 创建新记录
-                            ITDevice.objects.create(
-                                device_no=device_no,
-                                device_type=device_type,
-                                asset_no=asset_no,
-                                serial_no=serial_no,
-                                purchase_date=purchase_date if isinstance(purchase_date, str) else None,
-                                price=price,
-                                location=location,
-                                user=user,
-                                department=department,
-                                status=status,
-                                remarks=remarks
-                            )
-                            imported_count += 1
-                        
-                    except Exception as e:
-                        error_count += 1
-                        errors.append(f"第{row_idx}行: {str(e)}")
-                
-                # 显示结果
-                if imported_count > 0:
-                    messages.success(request, f'成功导入 {imported_count} 条记录！')
-                if updated_count > 0:
-                    messages.success(request, f'成功更新 {updated_count} 条记录！')
-                if error_count > 0:
-                    messages.warning(request, f'{error_count} 条记录导入失败。')
-                    for err in errors[:5]:
-                        messages.error(request, err)
-                
-                return redirect('device_list')
-                
-            except Exception as e:
-                messages.error(request, f'文件解析失败: {str(e)}')
-                return redirect('device_import_excel')
-    else:
-        form = ExcelImportForm()
-    
-    return render(request, 'inventory/device_import.html', {'form': form, 'title': '导入IT设备'})
-
-
-@login_required
 def supply_template_download(request):
     """下载办公用品导入模板"""
     wb = Workbook()
@@ -2201,105 +1890,6 @@ def supply_template_download(request):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     response['Content-Disposition'] = 'attachment; filename="办公用品导入模板.xlsx"'
-    return response
-
-
-@login_required
-def device_template_download(request):
-    """下载IT设备导入模板"""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "IT设备导入模板"
-    
-    # 表头样式
-    header_font = Font(bold=True, size=12, color="FFFFFF")
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    header_alignment = Alignment(horizontal="center", vertical="center")
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    # 表头
-    headers = ['设备编号', '设备类型', '资产编号', '序列号', '采购日期', '采购价格',
-               '存放位置', '使用人', '使用部门', '状态', '备注']
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_alignment
-        cell.border = border
-    
-    # 示例数据行（灰色提示）
-    example_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-    example_font = Font(color="999999", italic=True)
-    
-    examples = [
-        ['PC001', '台式机', 'ZC2024001', 'SN123456789', '2024-01-15', 5000.00, '机房A', '张三', '技术部', '使用中', '研发用'],
-        ['PC002', '笔记本', 'ZC2024002', 'SN987654321', '2024-02-20', 8000.00, '办公室B', '李四', '销售部', '使用中', '出差用'],
-        ['MN001', '显示器', 'ZC2024003', 'SN111222333', '2024-01-15', 1500.00, '机房A', '', '', '库存', '备用'],
-    ]
-    
-    for row_idx, example in enumerate(examples, 2):
-        for col_idx, value in enumerate(example, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.fill = example_fill
-            cell.font = example_font
-            cell.border = border
-    
-    # 调整列宽
-    column_widths = [15, 20, 15, 20, 15, 12, 20, 15, 20, 10, 30]
-    for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[chr(64 + i)].width = width
-    
-    # 添加说明工作表
-    ws_help = wb.create_sheet("填写说明")
-    ws_help.column_dimensions['A'].width = 20
-    ws_help.column_dimensions['B'].width = 60
-    
-    help_data = [
-        ['字段名', '填写说明'],
-        ['设备编号', '必填，唯一标识，如：PC001、NB001'],
-        ['设备类型', '必填，如：台式机、笔记本、显示器、服务器'],
-        ['资产编号', '可选，公司资产编号'],
-        ['序列号', '可选，设备序列号/SN码'],
-        ['采购日期', '可选，格式：YYYY-MM-DD，如：2024-01-15'],
-        ['采购价格', '数字，单位：元'],
-        ['存放位置', '可选，如：机房A、办公室B、仓库'],
-        ['使用人', '可选，当前使用人姓名'],
-        ['使用部门', '可选，所属部门名称'],
-        ['状态', '可选，库存/使用中/维修中/报废，默认：库存'],
-        ['备注', '可选，其他说明信息'],
-        ['', ''],
-        ['注意事项', ''],
-        ['1', '第1行为表头，请勿删除或修改'],
-        ['2', '第2-4行为示例数据，导入前请删除'],
-        ['3', '设备编号不能重复，重复时选择"更新已存在记录"可覆盖'],
-        ['4', '设备类型不存在时会自动创建'],
-        ['5', '日期格式必须为 YYYY-MM-DD，如：2024-01-15'],
-    ]
-    
-    for row_idx, row_data in enumerate(help_data, 1):
-        for col_idx, value in enumerate(row_data, 1):
-            cell = ws_help.cell(row=row_idx, column=col_idx, value=value)
-            if row_idx == 1:
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
-            if row_data[0] == '注意事项':
-                cell.font = Font(bold=True, color="FF0000")
-    
-    # 生成响应
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-    
-    response = HttpResponse(
-        output.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = 'attachment; filename="IT设备导入模板.xlsx"'
     return response
 
 

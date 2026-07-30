@@ -1,4 +1,4 @@
-# 办公用品管理系统 — 前端响应式与交互增强概览
+# 物品仓储管理 — 前端响应式与交互增强概览
 
 > 优化日期: 2026-05-20  
 > 技术栈: Django SSR + Bootstrap 5.3 + Font Awesome 6.4 (CSS + 原生 JS)  
@@ -81,7 +81,7 @@
 
 ---
 
-## 三、supply_list.html / device_list.html — 列表页面增强
+## 三、supply_list.html — 列表页面增强
 
 ### 3.1 移动端搜索筛选折叠
 
@@ -210,7 +210,6 @@
 | `inventory/templates/inventory/base.html` | **大幅增强** | +250 行 CSS、+100 行 JS、HTML 结构调整 |
 | `inventory/templates/inventory/home.html` | 中度增强 | stat-card-3d class、+60 行 JS (3D tilt) |
 | `inventory/templates/inventory/supply_list.html` | 结构调整 | 搜索筛选区折叠包裹 |
-| `inventory/templates/inventory/device_list.html` | 结构调整 | 搜索筛选区折叠包裹 |
 | `inventory/templates/inventory/supply_form.html` | 轻度增强 | 编码信息可折叠区块 |
 | `inventory/templates/inventory/stockin_application_form.html` | 轻度增强 | 物品明细可折叠区块 |
 

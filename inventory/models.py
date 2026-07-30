@@ -392,53 +392,6 @@ class StockOutItem(models.Model):
 StockOutRecord = StockOutOrder
 
 
-class ComputerType(models.Model):
-    """计算机类型表"""
-    type_code = models.CharField('类型编码', max_length=20, unique=True)
-    type_name = models.CharField('类型名称', max_length=100)
-    category = models.CharField('设备类别', max_length=20, 
-                                choices=[('主机', '主机'), ('显示器', '显示器'), ('笔记本', '笔记本'), ('其他', '其他')])
-    brand = models.CharField('品牌', max_length=50, blank=True)
-    model = models.CharField('型号', max_length=100, blank=True)
-    specs = models.TextField('配置参数', blank=True)
-    warranty_months = models.IntegerField('保修期(月)', default=36)
-    description = models.TextField('描述', blank=True)
-    
-    class Meta:
-        verbose_name = '计算机类型'
-        verbose_name_plural = '计算机类型管理'
-        ordering = ['type_code']
-    
-    def __str__(self):
-        return f"{self.type_code} - {self.type_name}"
-
-
-class ITDevice(models.Model):
-    """IT设备表"""
-    device_no = models.CharField('设备编号', max_length=50, unique=True)
-    device_type = models.ForeignKey(ComputerType, on_delete=models.CASCADE, verbose_name='设备类型')
-    asset_no = models.CharField('资产编号', max_length=50, blank=True)
-    serial_no = models.CharField('序列号', max_length=100, blank=True)
-    purchase_date = models.DateField('采购日期', null=True, blank=True)
-    price = models.DecimalField('采购价格', max_digits=12, decimal_places=2, default=0)
-    location = models.CharField('存放位置', max_length=100, blank=True)
-    user = models.CharField('使用人', max_length=100, blank=True)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='使用部门')
-    status = models.CharField('使用状态', max_length=20, default='库存',
-                              choices=[('库存', '库存'), ('使用中', '使用中'), ('维修中', '维修中'), ('报废', '报废')])
-    remarks = models.TextField('备注', blank=True)
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    updated_at = models.DateTimeField('更新时间', auto_now=True)
-    
-    class Meta:
-        verbose_name = 'IT设备'
-        verbose_name_plural = 'IT设备管理'
-        ordering = ['device_no']
-    
-    def __str__(self):
-        return f"{self.device_no} - {self.device_type.type_name}"
-
-
 class ReturnApplication(models.Model):
     """办公用品归还申请表"""
     return_no = models.CharField('归还单号', max_length=50, unique=True)
@@ -594,7 +547,6 @@ class RolePermission(models.Model):
         ('stockout', '出库单管理'),
         ('approval', '审批管理'),
         ('return', '归还管理'),
-        ('it_device', 'IT设备管理'),
         ('statistics', '统计报表'),
         ('user_management', '用户管理'),
     ]

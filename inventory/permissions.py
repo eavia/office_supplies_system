@@ -31,7 +31,6 @@ BUILTIN_PERMISSIONS = {
         'stockout':      {'view': 'all', 'create': 'all', 'update': 'all', 'delete': 'all', 'approve': 'all', 'export': 'all'},
         'approval':      {'view': 'all', 'approve': 'all'},
         'return':        {'view': 'all', 'create': 'all', 'update': 'all', 'delete': 'all', 'approve': 'all'},
-        'it_device':     {'view': 'all', 'create': 'all', 'update': 'all', 'delete': 'all', 'export': 'all', 'import': 'all'},
         'statistics':    {'view': 'all', 'export': 'all'},
         'user_management': {'view': 'all', 'create': 'all', 'update': 'all', 'delete': 'all'},
     },
@@ -42,7 +41,6 @@ BUILTIN_PERMISSIONS = {
         'stockout':      {'view': 'all', 'create': 'all', 'approve': 'all'},
         'approval':      {'view': 'all', 'approve': 'all'},
         'return':        {'view': 'all', 'create': 'all', 'approve': 'all'},
-        'it_device':     {'view': 'all', 'create': 'all', 'update': 'all', 'delete': 'all'},
         'statistics':    {'view': 'all'},
         'user_management': {'view': 'none'},
     },
@@ -53,7 +51,6 @@ BUILTIN_PERMISSIONS = {
         'stockout':      {'view': 'dept', 'create': 'all', 'approve': 'dept'},
         'approval':      {'view': 'dept', 'approve': 'dept'},
         'return':        {'view': 'dept', 'create': 'all'},
-        'it_device':     {'view': 'dept'},
         'statistics':    {'view': 'dept'},
         'user_management': {'view': 'none'},
     },
@@ -64,7 +61,6 @@ BUILTIN_PERMISSIONS = {
         'stockout':      {'view': 'own', 'create': 'all'},
         'approval':      {'view': 'own'},
         'return':        {'view': 'own', 'create': 'all'},
-        'it_device':     {'view': 'dept'},
         'statistics':    {'view': 'dept'},
         'user_management': {'view': 'none'},
     },
@@ -76,7 +72,6 @@ MODEL_MODULE_MAP = {
     'StockInApplication': 'stockin',
     'StockOutOrder':      'stockout',
     'StockOutRecord':     'stockout',
-    'ITDevice':           'it_device',
     'OfficeSupply':       'supply',
     'ReturnApplication':  'return',
 }
@@ -174,7 +169,7 @@ def get_visible_queryset_config(user, model_class, action='view'):
     from inventory.utils import get_user_role
     from inventory.models import (
         StockInApplication, StockOutOrder, StockOutRecord,
-        ITDevice, OfficeSupply, ReturnApplication,
+        OfficeSupply, ReturnApplication,
     )
 
     role = get_user_role(user)
@@ -201,8 +196,6 @@ def get_visible_queryset_config(user, model_class, action='view'):
                 return model_class.objects.filter(department=dept)
             elif model_class in (StockOutOrder, StockOutRecord):
                 return model_class.objects.filter(department=dept)
-            elif model_class == ITDevice:
-                return model_class.objects.filter(department=dept)
             elif model_class == ReturnApplication:
                 return model_class.objects.filter(department=dept)
             else:
@@ -215,12 +208,6 @@ def get_visible_queryset_config(user, model_class, action='view'):
             return model_class.objects.filter(applicant=user)
         elif model_class in (StockOutOrder, StockOutRecord, ReturnApplication):
             return model_class.objects.filter(operator=user)
-        elif model_class == ITDevice:
-            profile = getattr(user, 'profile', None)
-            dept = getattr(profile, 'department', None)
-            if dept:
-                return model_class.objects.filter(department=dept)
-            return model_class.objects.none()
         else:
             return model_class.objects.all()
 

@@ -42,21 +42,7 @@ urlpatterns = [
     path('returns/create/', views.return_application_create, name='return_create'),
     path('returns/<int:pk>/approve/', views.return_approval, name='return_approval'),
     
-    # IT设备管理
-    path('devices/', views.device_list, name='device_list'),
-    path('devices/create/', views.device_create, name='device_create'),
-    path('devices/<int:pk>/update/', views.device_update, name='device_update'),
-    path('devices/<int:pk>/delete/', views.device_delete, name='device_delete'),
-    path('devices/export/', views.device_export_excel, name='device_export'),
-    path('devices/import/', views.device_import_excel, name='device_import'),
-    path('devices/template/', views.device_template_download, name='device_template'),
-    
-    # 计算机类型管理
-    path('computer-types/', views.computer_type_list, name='computer_type_list'),
-    path('computer-types/create/', views.computer_type_create, name='computer_type_create'),
-    path('computer-types/<int:pk>/update/', views.computer_type_update, name='computer_type_update'),
-    path('computer-types/<int:pk>/delete/', views.computer_type_delete, name='computer_type_delete'),
-    
+
     # 统计报表
     path('statistics/stockin/', views.stockin_statistics, name='stockin_statistics'),
     path('statistics/stockout/', views.stockout_statistics, name='stockout_statistics'),

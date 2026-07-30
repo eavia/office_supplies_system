@@ -1,6 +1,6 @@
 {% extends 'inventory/base.html' %}
 
-{% block title %}系统首页 - 办公用品管理系统{% endblock %}
+{% block title %}系统首页 - 物品仓储管理{% endblock %}
 {% block page_title %}系统首页{% endblock %}
 
 {% block extra_css %}
@@ -139,26 +139,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card stat-card success stat-card-3d">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <div class="stat-label">IT设备总数</div>
-                        <div class="stat-value">{{ device_count }}</div>
-                    </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-desktop"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer">
-                <a href="{% url 'device_list' %}" class="text-decoration-none" style="color:#48bb78;">
-                    查看详情 <i class="fas fa-arrow-right ms-1"></i>
-                </a>
-            </div>
-        </div>
-    </div>
+
 </div>
 
 <!-- 快捷操作 -->
@@ -190,18 +171,7 @@
             <span>归还申请</span>
         </a>
     </div>
-    <div class="col-md-2 col-6">
-        <a href="{% url 'device_create' %}" class="quick-action">
-            <i class="fas fa-laptop" style="color:#a0aec0;"></i>
-            <span>设备登记</span>
-        </a>
-    </div>
-    <div class="col-md-2 col-6">
-        <a href="{% url 'computer_type_create' %}" class="quick-action">
-            <i class="fas fa-plus-square" style="color:#0075de;"></i>
-            <span>类型追加</span>
-        </a>
-    </div>
+
 </div>
 
 <!-- 最近动态 -->

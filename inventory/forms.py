@@ -3,7 +3,7 @@ import json
 from django import forms
 from pypinyin import lazy_pinyin
 
-from .models import OfficeSupply, StockInApplication, StockOutRecord, StockOutOrder, StockOutItem, ITDevice, ComputerType, ReturnApplication, ItemCategory, Department
+from .models import OfficeSupply, StockInApplication, StockOutRecord, StockOutOrder, StockOutItem, ReturnApplication, ItemCategory, Department
 
 
 def _get_pinyin_initials(text):
@@ -216,63 +216,6 @@ class ReturnApplicationForm(forms.ModelForm):
         if is_supply_disabled:
             raise forms.ValidationError('该物品已停用，请选择有效物品')
         return supply
-
-    def clean_department(self):
-        department = self.cleaned_data.get('department')
-        if not department:
-            return department
-        if not department.is_active:
-            raise forms.ValidationError('该部门已停用，请选择有效部门')
-        return department
-
-
-class ComputerTypeForm(forms.ModelForm):
-    """计算机类型表单"""
-    class Meta:
-        model = ComputerType
-        fields = ['type_code', 'type_name', 'category', 'brand', 'model', 'specs', 'warranty_months', 'description']
-        widgets = {
-            'type_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '类型编码'}),
-            'type_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '类型名称'}),
-            'category': forms.Select(attrs={'class': 'form-select'}),
-            'brand': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '品牌'}),
-            'model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '型号'}),
-            'specs': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '配置参数'}),
-            'warranty_months': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-
-
-class ITDeviceForm(forms.ModelForm):
-    """IT设备表单"""
-    class Meta:
-        model = ITDevice
-        fields = ['device_no', 'device_type', 'asset_no', 'serial_no', 'purchase_date', 
-                  'price', 'location', 'user', 'department', 'status', 'remarks']
-        widgets = {
-            'device_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '设备编号'}),
-            'device_type': forms.Select(attrs={'class': 'form-select'}),
-            'asset_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '资产编号'}),
-            'serial_no': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '序列号'}),
-            'purchase_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
-            'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '存放位置'}),
-            'user': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '使用人'}),
-            'department': forms.Select(attrs={'class': 'form-select'}),
-            'status': forms.Select(attrs={'class': 'form-select'}),
-            'remarks': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        active_departments = list(Department.objects.filter(is_active=True).order_by('sort_order', 'code'))
-        self.fields['department'].queryset = Department.objects.filter(pk__in=[d.pk for d in active_departments]).order_by('sort_order', 'code')
-        self.fields['department'].label_from_instance = lambda obj: f"{obj.code} {obj.name}"
-        self.fields['department'].required = False
-        self.dept_pinyin_json = json.dumps({
-            str(d.id): _get_pinyin_initials(d.name)
-            for d in active_departments
-        })
 
     def clean_department(self):
         department = self.cleaned_data.get('department')

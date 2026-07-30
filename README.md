@@ -1,6 +1,6 @@
-# 办公用品管理系统 (Django + SQLite)
+# 物品仓储管理 (Django + SQLite)
 
-基于 Django 6.0 + SQLite 的办公用品管理系统，包含四大核心模块。
+基于 Django 6.0 + SQLite 的物品仓储管理系统，包含三大核心模块。
 
 ## 系统功能
 
@@ -15,16 +15,11 @@
 - 入库统计
 - 出库统计
 
-### 3. IT设备管理
-- 计算机资源一览（主机/显示器登记/变更/删除）
-- 计算机类型一览（追加/变更/删除）
-
-### 4. 基础数据
+### 3. 基础数据
 - 办公用品库存表
 - 入库申请表
 - 出库记录表
-- IT设备表
-- 计算机类型表
+
 
 ## 技术栈
 
@@ -102,25 +97,6 @@ python manage.py runserver
 | J | 单价 | 数字 |
 | K | 状态 | 正常/低库存/停用 |
 
-### IT设备表
-- **导出**: 访问 `/devices/export/` 或点击设备列表页【导出】按钮
-- **导入**: 访问 `/devices/import/` 或点击设备列表页【导入】按钮
-- **模板下载**: 访问 `/devices/template/` 或在导入页面点击【下载导入模板】
-
-**Excel 格式要求 (IT设备)**:
-| 列 | 字段 | 说明 |
-|----|-----|------|
-| A | 设备编号 | 必填，唯一标识 |
-| B | 设备类型 | 必填，如：台式机、笔记本 |
-| C | 资产编号 | 可选 |
-| D | 序列号 | 可选 |
-| E | 采购日期 | 格式：YYYY-MM-DD |
-| F | 采购价格 | 数字 |
-| G | 存放位置 | 可选 |
-| H | 使用人 | 可选 |
-| I | 使用部门 | 可选 |
-| J | 状态 | 库存/使用中/维修中/报废 |
-| K | 备注 | 可选 |
 
 **导入选项**:
 - 【更新已存在记录】勾选后，如果编码/编号已存在则更新数据，否则新增
@@ -205,17 +181,7 @@ office_supplies_system/
 | | 出库登记 | `/stockout/create/` |
 | 归还申请 | 归还列表 | `/returns/` |
 | | 新增归还 | `/returns/create/` |
-| IT设备 | 设备列表 | `/devices/` |
-| | 设备登记 | `/devices/create/` |
-| | 设备变更 | `/devices/<id>/update/` |
-| | 删除设备 | `/devices/<id>/delete/` |
-| | **导出Excel** | `/devices/export/` |
-| | **导入Excel** | `/devices/import/` |
-| | **下载模板** | `/devices/template/` |
-| 类型管理 | 类型列表 | `/computer-types/` |
-| | 类型追加 | `/computer-types/create/` |
-| | 类型变更 | `/computer-types/<id>/update/` |
-| | 删除类型 | `/computer-types/<id>/delete/` |
+
 | 统计报表 | 入库统计 | `/statistics/stockin/` |
 | | 出库统计 | `/statistics/stockout/` |
 

@@ -1,4 +1,4 @@
-# 办公用品管理系统 - Windows 打包说明
+# 物品仓储管理 - Windows 打包说明
 
 ## 打包步骤
 
@@ -33,7 +33,7 @@ python manage.py createsuperuser
 3. **执行打包**
 ```bash
 # 使用简化版启动器
-pyinstaller --name="办公用品管理系统" \
+pyinstaller --name="物品仓储管理" \
   --onefile \
   --console \
   --add-data="inventory/templates;inventory/templates" \
@@ -48,15 +48,15 @@ pyinstaller --name="办公用品管理系统" \
 ## 打包输出
 
 打包完成后，`dist/` 目录下会生成：
-- `办公用品管理系统.exe` - 可执行文件
+- `物品仓储管理.exe` - 可执行文件
 
 ## 使用方法
 
 1. **复制到目标电脑**
-   - 将 `办公用品管理系统.exe` 复制到 Windows 电脑
+   - 将 `物品仓储管理.exe` 复制到 Windows 电脑
 
 2. **运行**
-   - 双击 `办公用品管理系统.exe`
+   - 双击 `物品仓储管理.exe`
    - 程序会自动启动服务器并打开浏览器
 
 3. **登录**

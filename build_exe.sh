@@ -1,9 +1,9 @@
 #!/bin/bash
-# 办公用品管理系统 - PyInstaller 打包脚本
+# 物品仓储管理 - PyInstaller 打包脚本
 # 此脚本将项目打包成独立的 Windows 可执行文件
 
 echo "=========================================="
-echo "  办公用品管理系统 - 打包工具"
+echo "  物品仓储管理 - 打包工具"
 echo "=========================================="
 echo ""
 
@@ -48,7 +48,7 @@ pyinstaller launcher.spec \
     --log-level=WARN
 
 # 检查打包结果
-if [ -d "dist/办公用品管理系统" ] || [ -f "dist/办公用品管理系统.exe" ]; then
+if [ -d "dist/物品仓储管理" ] || [ -f "dist/物品仓储管理.exe" ]; then
     echo ""
     echo "=========================================="
     echo "  打包成功！"
@@ -57,7 +57,7 @@ if [ -d "dist/办公用品管理系统" ] || [ -f "dist/办公用品管理系统
     echo "输出目录: ./dist/"
     echo ""
     echo "使用说明:"
-    echo "1. 将 dist/办公用品管理系统.exe 复制到目标电脑"
+    echo "1. 将 dist/物品仓储管理.exe 复制到目标电脑"
     echo "2. 双击运行即可启动系统"
     echo "3. 系统会自动在浏览器中打开"
     echo ""
@@ -81,8 +81,8 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "创建压缩包..."
     cd dist
-    zip -r "办公用品管理系统-$(date +%Y%m%d).zip" "办公用品管理系统" "办公用品管理系统.exe" 2>/dev/null || \
-    tar -czf "办公用品管理系统-$(date +%Y%m%d).tar.gz" "办公用品管理系统" "办公用品管理系统.exe" 2>/dev/null || \
+    zip -r "物品仓储管理-$(date +%Y%m%d).zip" "物品仓储管理" "物品仓储管理.exe" 2>/dev/null || \
+    tar -czf "物品仓储管理-$(date +%Y%m%d).tar.gz" "物品仓储管理" "物品仓储管理.exe" 2>/dev/null || \
     echo "压缩失败，请手动打包 dist/ 目录"
     cd ..
 fi
