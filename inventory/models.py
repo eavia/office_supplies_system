@@ -493,6 +493,8 @@ class Profile(models.Model):
     @property
     def role(self):
         """获取用户当前角色"""
+        if self.user.is_superuser:
+            return 'admin'
         groups = self.user.groups.values_list('name', flat=True)
         group_map = get_role_group_map()
         for role_key, group_name in group_map.items():

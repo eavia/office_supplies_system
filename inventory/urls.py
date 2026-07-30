@@ -78,6 +78,11 @@ urlpatterns = [
     path('profile/', views.profile_view, name='profile'),
     path('profile/password/', views.profile_password, name='profile_password'),
 
+    # 流程管理（管理员专用）
+    path('process-management/', views.process_management, name='process_management'),
+    path('process-management/action/', views.process_batch_action, name='process_batch_action'),
+    path('process-management/delete/', views.process_delete_order, name='process_delete_order'),
+
     # 注册
     path('register/', views.register_view, name='register'),
 

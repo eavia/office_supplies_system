@@ -1,7 +1,10 @@
 from django.test import TestCase, Client
 from django.apps import apps
 from django.contrib.auth.models import User
-from inventory.models import ItemCategory, OfficeSupply, StockInApplication, StockOutRecord, ReturnApplication
+from inventory.models import (
+    Department, ItemCategory, OfficeSupply, ReturnApplication,
+    StockInApplication, StockOutItem, StockOutOrder, StockOutRecord,
+)
 
 
 class SystemTestCase(TestCase):
@@ -24,8 +27,11 @@ class SystemTestCase(TestCase):
             description='办公文具类',
             is_active=True,
         )
-        from inventory.models import Department
-        self.department = Department.objects.create(name='测试部门')
+        self.department = Department.objects.create(
+            code='CS',
+            name='测试部门',
+            is_active=True,
+        )
         self.user.profile.department = self.department
         self.user.profile.save(update_fields=['department'])
 
@@ -165,6 +171,91 @@ class SystemTestCase(TestCase):
                          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         print("✓ 办公用品导入模板下载正常")
     
+class ProcessManagementTestCase(TestCase):
+    """管理员流程扭转必须保证状态和库存同步。"""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'admin@example.com', 'testpass123')
+        self.client.force_login(self.admin)
+        self.department = Department.objects.create(code='GL', name='管理部', is_active=True)
+        self.category = ItemCategory.objects.create(code='BG', name='办公用品', is_active=True)
+        self.supply = OfficeSupply.objects.create(
+            name='测试物品', item_category=self.category, quantity=20,
+            safety_stock=15,
+        )
+
+    def _stockout_order(self, status='待审批'):
+        order = StockOutOrder.objects.create(
+            recipient='测试人员', department=self.department, operator=self.admin,
+            status=status,
+        )
+        StockOutItem.objects.create(order=order, supply=self.supply, quantity=10)
+        if status in ('待审批', '待仓管审批'):
+            self.supply.locked_quantity = 10
+            self.supply.save()
+        elif status == '已批准':
+            self.supply.quantity = 10
+            self.supply.save()
+        return order
+
+    def test_rejects_forged_process_parameters(self):
+        order = self._stockout_order()
+        response = self.client.post('/process-management/action/', {
+            'order_type': 'invalid', 'action': '已批准', 'selected': [order.pk],
+        })
+        self.assertRedirects(response, '/process-management/')
+        order.refresh_from_db()
+        self.supply.refresh_from_db()
+        self.assertEqual(order.status, '待审批')
+        self.assertEqual(self.supply.quantity, 20)
+        self.assertEqual(self.supply.locked_quantity, 10)
+
+        response = self.client.post('/process-management/action/', {
+            'order_type': 'stockout', 'action': '伪造状态', 'selected': [order.pk],
+        })
+        self.assertRedirects(response, '/process-management/')
+        order.refresh_from_db()
+        self.assertEqual(order.status, '待审批')
+
+    def test_process_approval_updates_inventory_and_stock_status(self):
+        order = self._stockout_order()
+        response = self.client.post('/process-management/action/', {
+            'order_type': 'stockout', 'action': '已批准', 'selected': [order.pk],
+        })
+        self.assertRedirects(response, '/process-management/?type=stockout')
+        order.refresh_from_db()
+        self.supply.refresh_from_db()
+        self.assertEqual(order.status, '已批准')
+        self.assertEqual(self.supply.quantity, 10)
+        self.assertEqual(self.supply.locked_quantity, 0)
+        self.assertEqual(self.supply.status, '低库存')
+
+    def test_approved_stockout_with_returns_cannot_be_deleted_or_reversed(self):
+        order = self._stockout_order(status='已批准')
+        ReturnApplication.objects.create(
+            stockout_order=order, supply=self.supply, quantity=1,
+            returner='测试人员', department=self.department, operator=self.admin,
+            return_date='2026-01-01', status='已批准',
+        )
+        response = self.client.post('/process-management/delete/', {
+            'order_type': 'stockout', 'selected': [order.pk],
+        })
+        self.assertRedirects(response, '/process-management/?type=stockout')
+        self.assertTrue(StockOutOrder.objects.filter(pk=order.pk).exists())
+        self.assertTrue(ReturnApplication.objects.filter(stockout_order=order).exists())
+
+        response = self.client.post('/process-management/action/', {
+            'order_type': 'stockout', 'action': '待审批', 'selected': [order.pk],
+        })
+        self.assertRedirects(response, '/process-management/?type=stockout')
+        order.refresh_from_db()
+        self.assertEqual(order.status, '已批准')
+
+    def test_superuser_profile_uses_admin_role(self):
+        self.assertEqual(self.admin.profile.role, 'admin')
+        self.assertEqual(self.admin.profile.role_display, '管理员')
+
+
 class ITDeviceModuleRemovalTests(TestCase):
     """IT设备管理模块必须不存在。"""
 

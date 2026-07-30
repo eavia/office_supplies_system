@@ -202,7 +202,7 @@ def supply_list(request):
     category_id = request.GET.get('category', '')
     status = request.GET.get('status', '')
     
-    supplies = OfficeSupply.objects.select_related('item_category').all()
+    supplies = OfficeSupply.objects.select_related('item_category').all().order_by('-created_at')
     
     if query:
         supplies = supplies.filter(
@@ -384,7 +384,7 @@ def stockin_application_list(request):
     query = request.GET.get('q', '')
     status = request.GET.get('status', '')
 
-    applications = get_visible_queryset(request.user, StockInApplication).prefetch_related('items__supply').select_related('applicant')
+    applications = get_visible_queryset(request.user, StockInApplication).prefetch_related('items__supply').select_related('applicant').order_by('-created_at')
 
     if query:
         applications = applications.filter(
@@ -709,10 +709,12 @@ def approval_process(request, pk):
 
         if action == 'approve':
             application.status = '已批准'
-            # 批准后逐项增加库存
+            # 批准后逐项原子增加库存，避免并发审批丢失更新。
+            from django.db.models import F
             for item in application.items.select_related('supply').all():
-                item.supply.quantity += item.quantity
-                item.supply.save()
+                OfficeSupply.objects.filter(pk=item.supply.pk).update(
+                    quantity=F('quantity') + item.quantity
+                )
             messages.success(request, f'申请 "{application.application_no}" 已批准，共 {application.items.count()} 项物品库存已更新！')
         elif action == 'reject':
             application.status = '已拒绝'
@@ -897,7 +899,7 @@ def stockout_list(request):
     out_type = request.GET.get('out_type', '')
     status_filter = request.GET.get('status', '')
 
-    records = get_visible_queryset(request.user, StockOutOrder).prefetch_related('items__supply').all()
+    records = get_visible_queryset(request.user, StockOutOrder).prefetch_related('items__supply').order_by('-created_at')
 
     if query:
         records = records.filter(
@@ -1261,7 +1263,16 @@ def stockout_edit(request, pk):
                                 f'{supply.name} 可用库存不足！当前可用：{supply.available_quantity}，含将释放锁定：{released} {supply.unit}，需要：{qty}'
                             )
 
-                    # 2d. 全部通过，释放旧锁定、保存表单、重建明细、加新锁定
+                    # 2d. 全部通过，重置审批信息，释放旧锁定、保存表单、重建明细、加新锁定
+                    if order.status in ('待仓管审批', '已拒绝'):
+                        order.status = '待审批'
+                        order.dept_approver = None
+                        order.dept_approval_time = None
+                        order.dept_approval_comment = ''
+                        order.approver = None
+                        order.approval_time = None
+                        order.approval_comment = ''
+
                     for sid, released in old_locks.items():
                         OfficeSupply.objects.filter(pk=sid).update(
                             locked_quantity=F('locked_quantity') - released
@@ -2737,3 +2748,348 @@ def profile_password(request):
         form = PasswordResetForm()
     
     return render(request, 'inventory/profile_password.html', {'form': form})
+
+
+# ==================== 流程管理（管理员专用）====================
+
+PROCESS_STATUSES = {
+    'stockin': {'待审批', '已批准', '已拒绝'},
+    'stockout': {'待审批', '待仓管审批', '已批准', '已拒绝'},
+}
+
+
+def _validate_process_request(order_type, target_status=None):
+    """拒绝无效的流程管理参数，避免修改库存。"""
+    if order_type not in PROCESS_STATUSES:
+        raise ValueError('无效的单据类型')
+    if target_status is not None and target_status not in PROCESS_STATUSES[order_type]:
+        raise ValueError('无效的目标状态')
+
+
+def _locked_order_supplies(order):
+    """按稳定顺序锁定库存行，并汇总单据中的物品数量。"""
+    quantities = {}
+    for item in order.items.all():
+        quantities[item.supply_id] = quantities.get(item.supply_id, 0) + item.quantity
+    supplies = {
+        supply.pk: supply
+        for supply in OfficeSupply.objects.select_for_update().filter(
+            pk__in=sorted(quantities)
+        ).order_by('pk')
+    }
+    if len(supplies) != len(quantities):
+        raise ValueError('单据包含已删除的物品，无法处理')
+    return supplies, quantities
+
+
+def _adjust_supply(supply, quantity_delta=0, locked_delta=0):
+    """修改已锁定库存行，并同步低库存状态。"""
+    new_quantity = supply.quantity + quantity_delta
+    new_locked_quantity = supply.locked_quantity + locked_delta
+    if new_quantity < 0 or new_locked_quantity < 0:
+        raise ValueError(f'{supply.name} 库存数据不足，无法执行该操作')
+    if new_locked_quantity > new_quantity:
+        raise ValueError(f'{supply.name} 锁定库存不能超过实际库存')
+    supply.quantity = new_quantity
+    supply.locked_quantity = new_locked_quantity
+    supply.save(update_fields=['quantity', 'locked_quantity', 'status', 'updated_at'])
+
+
+@login_required
+def process_management(request):
+    """管理员流程管理，可扭转入库单和出库单审批状态。"""
+    if not request.user.is_superuser:
+        messages.error(request, '只有管理员可以访问流程管理')
+        return redirect('home')
+
+    order_type = request.GET.get('type', 'stockout')
+    status_filter = request.GET.get('status', '')
+    query = request.GET.get('q', '')
+
+    if order_type not in PROCESS_STATUSES:
+        messages.error(request, '无效的单据类型')
+        return redirect('process_management')
+    if status_filter and status_filter not in PROCESS_STATUSES[order_type]:
+        messages.error(request, '无效的状态筛选条件')
+        return redirect(f'/process-management/?type={order_type}')
+
+    if order_type == 'stockin':
+        qs = StockInApplication.objects.prefetch_related('items__supply').select_related(
+            'applicant', 'department', 'approver'
+        ).order_by('-created_at')
+    else:
+        qs = StockOutOrder.objects.prefetch_related('items__supply').select_related(
+            'operator', 'department', 'approver', 'dept_approver'
+        ).order_by('-created_at')
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if query:
+        if order_type == 'stockin':
+            qs = qs.filter(
+                Q(application_no__icontains=query) | Q(applicant__username__icontains=query)
+            )
+        else:
+            qs = qs.filter(
+                Q(record_no__icontains=query) | Q(recipient__icontains=query) |
+                Q(operator__username__icontains=query)
+            )
+
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'inventory/process_management.html', {
+        'page_obj': page_obj,
+        'order_type': order_type,
+        'status_filter': status_filter,
+        'query': query,
+        'title': '流程管理',
+    })
+
+
+@login_required
+def process_batch_action(request):
+    """批量扭转单据状态，仅限超级管理员。"""
+    if not request.user.is_superuser:
+        messages.error(request, '权限不足')
+        return redirect('home')
+    if request.method != 'POST':
+        return redirect('process_management')
+
+    order_type = request.POST.get('order_type', 'stockout')
+    action = request.POST.get('action', '')
+    selected = request.POST.getlist('selected')
+    comment = request.POST.get('comment', '')
+
+    try:
+        _validate_process_request(order_type, action)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect('process_management')
+
+    if not selected:
+        messages.error(request, '请至少选择一项单据')
+        return redirect(f'/process-management/?type={order_type}')
+
+    success_count = 0
+    error_msgs = []
+    for pk_str in selected:
+        try:
+            pk = int(pk_str)
+            if order_type == 'stockin':
+                _process_stockin_transition(request, pk, action, comment)
+            else:
+                _process_stockout_transition(request, pk, action, comment)
+            success_count += 1
+        except ValueError as exc:
+            error_msgs.append(str(exc))
+        except Exception:
+            error_msgs.append('处理失败，请联系管理员')
+
+    if success_count:
+        messages.success(request, f'成功处理 {success_count} 条单据')
+    for message in error_msgs[:5]:
+        messages.error(request, message)
+    if len(error_msgs) > 5:
+        messages.error(request, f'... 还有 {len(error_msgs) - 5} 条错误')
+    return redirect(f'/process-management/?type={order_type}')
+
+
+def _process_stockin_transition(request, pk, target_status, comment):
+    """扭转入库单状态，并同步库存。"""
+    from django.db import transaction
+
+    with transaction.atomic():
+        application = StockInApplication.objects.select_for_update().prefetch_related('items').get(pk=pk)
+        old_status = application.status
+        if old_status == target_status:
+            raise ValueError(f'入库单 {application.application_no} 已是 {target_status} 状态，无需扭转')
+        supplies, quantities = _locked_order_supplies(application)
+
+        if old_status == '已批准' and target_status in ('待审批', '已拒绝'):
+            for supply_id, quantity in quantities.items():
+                _adjust_supply(supplies[supply_id], quantity_delta=-quantity)
+        if old_status in ('待审批', '已拒绝') and target_status == '已批准':
+            for supply_id, quantity in quantities.items():
+                _adjust_supply(supplies[supply_id], quantity_delta=quantity)
+
+        application.status = target_status
+        if target_status in ('已批准', '已拒绝'):
+            application.approver = request.user
+            application.approval_time = timezone.now()
+            application.approval_comment = comment or application.approval_comment
+        else:
+            application.approver = None
+            application.approval_time = None
+            application.approval_comment = ''
+        application.save()
+
+
+def _process_stockout_transition(request, pk, target_status, comment):
+    """扭转出库单状态，并同步实际库存与锁定库存。"""
+    from django.db import transaction
+
+    with transaction.atomic():
+        order = StockOutOrder.objects.select_for_update().prefetch_related('items').get(pk=pk)
+        old_status = order.status
+        if old_status == target_status:
+            raise ValueError(f'出库单 {order.record_no} 已是 {target_status} 状态，无需扭转')
+        if old_status == '已批准' and order.returns.exists():
+            raise ValueError('该出库单已有归还记录，不能扭转流程')
+        supplies, quantities = _locked_order_supplies(order)
+
+        if old_status == '已批准':
+            for supply_id, quantity in quantities.items():
+                _adjust_supply(supplies[supply_id], quantity_delta=quantity)
+            if target_status == '待审批':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=quantity)
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+                order.dept_approver = None
+                order.dept_approval_time = None
+                order.dept_approval_comment = ''
+            elif target_status == '待仓管审批':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=quantity)
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+            elif target_status == '已拒绝':
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+                order.dept_approver = None
+                order.dept_approval_time = None
+                order.dept_approval_comment = ''
+
+        elif old_status == '待仓管审批':
+            if target_status == '待审批':
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+            elif target_status == '已拒绝':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=-quantity)
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+            elif target_status == '已批准':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], quantity_delta=-quantity, locked_delta=-quantity)
+                order.approver = request.user
+                order.approval_time = timezone.now()
+                order.approval_comment = comment or order.approval_comment
+
+        elif old_status == '待审批':
+            if target_status == '已拒绝':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=-quantity)
+                order.dept_approver = None
+                order.dept_approval_time = None
+                order.dept_approval_comment = ''
+            elif target_status == '已批准':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], quantity_delta=-quantity, locked_delta=-quantity)
+                order.approver = request.user
+                order.approval_time = timezone.now()
+                order.approval_comment = comment or order.approval_comment
+                order.dept_approver = request.user
+                order.dept_approval_time = timezone.now()
+                order.dept_approval_comment = comment or order.dept_approval_comment
+            elif target_status == '待仓管审批':
+                order.dept_approver = request.user
+                order.dept_approval_time = timezone.now()
+                order.dept_approval_comment = comment or order.dept_approval_comment
+
+        elif old_status == '已拒绝':
+            if target_status == '待审批':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=quantity)
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+                order.dept_approver = None
+                order.dept_approval_time = None
+                order.dept_approval_comment = ''
+            elif target_status == '待仓管审批':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], locked_delta=quantity)
+                order.approver = None
+                order.approval_time = None
+                order.approval_comment = ''
+                order.dept_approver = request.user
+                order.dept_approval_time = timezone.now()
+                order.dept_approval_comment = comment or order.dept_approval_comment
+            elif target_status == '已批准':
+                for supply_id, quantity in quantities.items():
+                    _adjust_supply(supplies[supply_id], quantity_delta=-quantity)
+                order.approver = request.user
+                order.approval_time = timezone.now()
+                order.approval_comment = comment or order.approval_comment
+                order.dept_approver = request.user
+                order.dept_approval_time = timezone.now()
+                order.dept_approval_comment = comment or order.dept_approval_comment
+
+        order.status = target_status
+        order.save()
+
+
+@login_required
+def process_delete_order(request):
+    """批量删除单据，并同步库存与锁定库存。"""
+    if not request.user.is_superuser:
+        messages.error(request, '权限不足')
+        return redirect('home')
+    if request.method != 'POST':
+        return redirect('process_management')
+
+    order_type = request.POST.get('order_type', 'stockout')
+    selected = request.POST.getlist('selected')
+    if not selected:
+        messages.error(request, '请至少选择一项单据')
+        return redirect(f'/process-management/?type={order_type}')
+
+    try:
+        _validate_process_request(order_type)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect('process_management')
+
+    from django.db import transaction
+
+    deleted_count = 0
+    error_msgs = []
+    for pk_str in selected:
+        try:
+            pk = int(pk_str)
+            with transaction.atomic():
+                if order_type == 'stockin':
+                    application = StockInApplication.objects.select_for_update().prefetch_related('items').get(pk=pk)
+                    supplies, quantities = _locked_order_supplies(application)
+                    if application.status == '已批准':
+                        for supply_id, quantity in quantities.items():
+                            _adjust_supply(supplies[supply_id], quantity_delta=-quantity)
+                    application.delete()
+                else:
+                    order = StockOutOrder.objects.select_for_update().prefetch_related('items').get(pk=pk)
+                    if order.status == '已批准':
+                        raise ValueError('已批准的出库单不能删除，请通过流程扭转后保留审计记录')
+                    if order.returns.exists():
+                        raise ValueError('存在关联归还记录的出库单不能删除')
+                    supplies, quantities = _locked_order_supplies(order)
+                    if order.status in ('待审批', '待仓管审批'):
+                        for supply_id, quantity in quantities.items():
+                            _adjust_supply(supplies[supply_id], locked_delta=-quantity)
+                    order.delete()
+                deleted_count += 1
+        except ValueError as exc:
+            error_msgs.append(str(exc))
+        except Exception:
+            error_msgs.append('处理失败，请联系管理员')
+
+    if deleted_count:
+        messages.success(request, f'成功删除 {deleted_count} 条单据')
+    for message in error_msgs[:5]:
+        messages.error(request, message)
+    return redirect(f'/process-management/?type={order_type}')

@@ -1256,6 +1256,14 @@
                     </div>
                 </li>
                 
+                <!-- 流程管理（仅管理员可见） -->
+                {% if user.is_superuser %}
+                <li class="nav-item">
+                    <a class="nav-link {% if '/process-management' in request.path %}active{% endif %}" href="{% url 'process_management' %}">
+                        <i class="fas fa-random"></i> 流程管理
+                    </a>
+                </li>
+                {% endif %}
 
                 <!-- 用户管理（有用户管理查看权限可见） -->
                 {% load custom_filters %}

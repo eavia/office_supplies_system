@@ -9,6 +9,11 @@ PID_FILE="${PID_FILE:-/tmp/office_supplies_${PORT}.pid}"
 
 cd "$ROOT_DIR"
 
+PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/venv/bin/python}"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${PYTHON_BIN_FALLBACK:-python3}"
+fi
+
 find_listen_pid() {
   lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true
 }
@@ -21,7 +26,7 @@ start_server() {
     exit 0
   fi
 
-  nohup setsid python3 manage.py runserver "$HOST:$PORT" --noreload > "$LOG_FILE" 2>&1 < /dev/null &
+  nohup setsid "$PYTHON_BIN" manage.py runserver "$HOST:$PORT" --noreload > "$LOG_FILE" 2>&1 < /dev/null &
   local new_pid=$!
   echo "$new_pid" > "$PID_FILE"
   sleep 1
